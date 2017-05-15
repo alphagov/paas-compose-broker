@@ -37,8 +37,7 @@ func TestSuite(t *testing.T) {
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
 
-		config := config.New()
-		err := config.Get()
+		config, err := config.New()
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)

@@ -25,41 +25,43 @@ type Config struct {
 	Password   string
 }
 
-func New() *Config {
-	return &Config{}
-}
-
-func (c *Config) Get() error {
-	c.LogLevel = lager.DEBUG
+func New() (*Config, error) {
+	logLevel := lager.DEBUG
 	logLevelFromEnv := os.Getenv("LOG_LEVEL")
 	if logLevelFromEnv != "" {
 		var ok bool
-		c.LogLevel, ok = logLevels[strings.ToUpper(logLevelFromEnv)]
+		logLevel, ok = logLevels[strings.ToUpper(logLevelFromEnv)]
 		if !ok {
-			return fmt.Errorf("Invalid log level: ", logLevelFromEnv)
+			return nil, fmt.Errorf("Invalid log level: ", logLevelFromEnv)
 		}
 	}
 
-	c.ListenHost = "0.0.0.0"
+	listenHost := "0.0.0.0"
 	listenHostFromEnv := os.Getenv("LISTEN_HOST")
 	if listenHostFromEnv != "" {
-		c.ListenHost = listenHostFromEnv
+		listenHost = listenHostFromEnv
 	}
 
-	c.ListenPort = "8080"
+	listenPort := "8080"
 	listenPortFromEnv := os.Getenv("PORT")
 	if listenPortFromEnv != "" {
-		c.ListenPort = listenPortFromEnv
+		listenPort = listenPortFromEnv
 	}
 
-	c.Username = os.Getenv("USERNAME")
-	if c.Username == "" {
-		return fmt.Errorf("Please export $USERNAME")
+	username := os.Getenv("USERNAME")
+	if username == "" {
+		return nil, fmt.Errorf("Please export $USERNAME")
 	}
 
-	c.Password = os.Getenv("PASSWORD")
-	if c.Password == "" {
-		return fmt.Errorf("Please export $PASSWORD")
+	password := os.Getenv("PASSWORD")
+	if password == "" {
+		return nil, fmt.Errorf("Please export $PASSWORD")
 	}
-	return nil
+	return &Config{
+		LogLevel:   logLevel,
+		ListenHost: listenHost,
+		ListenPort: listenPort,
+		Username:   username,
+		Password:   password,
+	}, nil
 }

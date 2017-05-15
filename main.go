@@ -21,8 +21,7 @@ var (
 func main() {
 	flag.StringVar(&catalogFilePath, "catalog", "./catalog.json", "Location of the catalog file")
 	flag.Parse()
-	config := config.New()
-	err := config.Get()
+	config, err := config.New()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
