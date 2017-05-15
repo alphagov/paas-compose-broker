@@ -38,10 +38,7 @@ func TestSuite(t *testing.T) {
 		os.Setenv("PASSWORD", password)
 
 		config, err := config.New()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
+		Expect(err).ToNot(HaveOccurred())
 
 		logger := lager.NewLogger("compose-broker")
 		logger.RegisterSink(lager.NewWriterSink(os.Stdout, config.LogLevel))
@@ -93,9 +90,7 @@ func TestSuite(t *testing.T) {
 }
 `
 		err = catalog.Load([]byte(catalogData))
-		if err != nil {
-			logger.Error("catalog", err)
-		}
+		Expect(err).ToNot(HaveOccurred())
 
 		broker := broker.New(config, catalog, &logger)
 		credentials := brokerapi.BrokerCredentials{
