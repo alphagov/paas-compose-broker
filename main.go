@@ -51,6 +51,6 @@ func main() {
 	brokerAPI := brokerapi.New(broker, logger, credentials)
 
 	http.Handle("/", brokerAPI)
-	logger.Info("http-listen", lager.Data{"info": fmt.Sprintf("Service Broker started on " + broker.Config.BrokerAPIHost + ":" + broker.Config.BrokerAPIPort)})
-	logger.Error("http-listen", http.ListenAndServe(broker.Config.BrokerAPIHost+":"+broker.Config.BrokerAPIPort, nil))
+	logger.Info("http-listen", lager.Data{"info": fmt.Sprintf("Service Broker started on " + broker.Config.ListenHost + ":" + broker.Config.ListenPort)})
+	logger.Error("http-listen", http.ListenAndServe(broker.Config.ListenHost+":"+broker.Config.ListenPort, nil))
 }

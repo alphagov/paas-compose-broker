@@ -25,8 +25,6 @@ var (
 
 const (
 	INSTANCE_CREATE_TIMEOUT = 4 * time.Second
-	logLevel                = "debug"
-	brokerAPIHost           = "localhost"
 	username                = "username"
 	password                = "password"
 	listenPort              = "8080"
@@ -35,9 +33,7 @@ const (
 func TestSuite(t *testing.T) {
 	BeforeSuite(func() {
 
-		os.Setenv("LOG_LEVEL", logLevel)
-		os.Setenv("BROKER_API_HOST", brokerAPIHost)
-		os.Setenv("PORT", brokerAPIPort)
+		os.Setenv("PORT", listenPort)
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
 
@@ -109,7 +105,7 @@ func TestSuite(t *testing.T) {
 		}
 		brokerAPI = brokerapi.New(broker, logger, credentials)
 
-		brokerUrl = fmt.Sprintf("http://%s", brokerAPIHost+":"+brokerAPIPort)
+		brokerUrl = fmt.Sprintf("http://%s", broker.Config.ListenHost+":"+listenPort)
 	})
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Broker Suite")

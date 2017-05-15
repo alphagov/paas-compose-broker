@@ -19,8 +19,6 @@ This is a work-in-progress implementation of a service broker for services provi
 * Set the required environment variables:
 
   ```sh
-  cf set-env compose-broker BROKER_API_HOST 0.0.0.0
-  cf set-env compose-broker LOG_LEVEL DEBUG
   cf set-env compose-broker USERNAME compose-broker
   cf set-env compose-broker PASSWORD unguessable
   ```

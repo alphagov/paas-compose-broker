@@ -18,11 +18,11 @@ var (
 )
 
 type Config struct {
-	LogLevel      lager.LogLevel
-	BrokerAPIHost string
-	BrokerAPIPort string
-	Username      string
-	Password      string
+	LogLevel   lager.LogLevel
+	ListenHost string
+	ListenPort string
+	Username   string
+	Password   string
 }
 
 func New() *Config {
@@ -30,24 +30,26 @@ func New() *Config {
 }
 
 func (c *Config) Get() error {
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		return fmt.Errorf("Please export $LOG_LEVEL")
-	}
-	var ok bool
-	c.LogLevel, ok = logLevels[strings.ToUpper(logLevel)]
-	if !ok {
-		fmt.Errorf("Invalid log level: ", logLevel)
-	}
-
-	c.BrokerAPIHost = os.Getenv("BROKER_API_HOST")
-	if c.BrokerAPIHost == "" {
-		return fmt.Errorf("Please export $BROKER_API_HOST")
+	c.LogLevel = lager.DEBUG
+	logLevelFromEnv := os.Getenv("LOG_LEVEL")
+	if logLevelFromEnv != "" {
+		var ok bool
+		c.LogLevel, ok = logLevels[strings.ToUpper(logLevelFromEnv)]
+		if !ok {
+			return fmt.Errorf("Invalid log level: ", logLevelFromEnv)
+		}
 	}
 
-	c.BrokerAPIPort = os.Getenv("PORT")
-	if c.BrokerAPIPort == "" {
-		return fmt.Errorf("Please export $PORT")
+	c.ListenHost = "0.0.0.0"
+	listenHostFromEnv := os.Getenv("LISTEN_HOST")
+	if listenHostFromEnv != "" {
+		c.ListenHost = listenHostFromEnv
+	}
+
+	c.ListenPort = "8080"
+	listenPortFromEnv := os.Getenv("PORT")
+	if listenPortFromEnv != "" {
+		c.ListenPort = listenPortFromEnv
 	}
 
 	c.Username = os.Getenv("USERNAME")
