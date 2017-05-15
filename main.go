@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 
@@ -30,19 +29,22 @@ func main() {
 	logger := lager.NewLogger("compose-broker")
 	logger.RegisterSink(lager.NewWriterSink(os.Stdout, config.LogLevel))
 
-	catalogData, err := ioutil.ReadFile(catalogFilePath)
+	catalogFile, err := os.Open(catalogFilePath)
 	if err != nil {
-		logger.Error("catalog", err)
+		logger.Error("opening catalog file", err)
 		os.Exit(1)
 	}
-	catalog := catalog.New()
-	err = catalog.Load(catalogData)
+	newCatalog, err := catalog.New(catalogFile)
 	if err != nil {
-		logger.Error("catalog", err)
+		logger.Error("loading catalog", err)
+		os.Exit(1)
+	}
+	if err := catalogFile.Close(); err != nil {
+		logger.Error("closing catalog file", err)
 		os.Exit(1)
 	}
 
-	broker := broker.New(config, catalog, &logger)
+	broker := broker.New(config, newCatalog, &logger)
 	credentials := brokerapi.BrokerCredentials{
 		Username: config.Username,
 		Password: config.Password,

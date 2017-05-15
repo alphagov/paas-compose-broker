@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"io"
 
 	"github.com/pivotal-cf/brokerapi"
 )
@@ -10,14 +11,11 @@ type Catalog struct {
 	Services []brokerapi.Service `json:"services"`
 }
 
-func New() *Catalog {
-	return &Catalog{}
-}
-
-func (c *Catalog) Load(data []byte) error {
-	err := json.Unmarshal(data, c)
+func New(catalog io.Reader) (*Catalog, error) {
+	cp := &Catalog{}
+	err := json.NewDecoder(catalog).Decode(cp)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return cp, nil
 }

@@ -43,8 +43,7 @@ func TestSuite(t *testing.T) {
 		logger := lager.NewLogger("compose-broker")
 		logger.RegisterSink(lager.NewWriterSink(os.Stdout, config.LogLevel))
 
-		catalog := catalog.New()
-		catalogData := `
+		catalogData := strings.NewReader(`
 {
    "services":[
       {
@@ -88,11 +87,11 @@ func TestSuite(t *testing.T) {
       }
    ]
 }
-`
-		err = catalog.Load([]byte(catalogData))
+`)
+		newCatalog, err := catalog.New(catalogData)
 		Expect(err).ToNot(HaveOccurred())
 
-		broker := broker.New(config, catalog, &logger)
+		broker := broker.New(config, newCatalog, &logger)
 		credentials := brokerapi.BrokerCredentials{
 			Username: config.Username,
 			Password: config.Password,
