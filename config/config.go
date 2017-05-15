@@ -19,7 +19,6 @@ var (
 
 type Config struct {
 	LogLevel   lager.LogLevel
-	ListenHost string
 	ListenPort string
 	Username   string
 	Password   string
@@ -34,12 +33,6 @@ func New() (*Config, error) {
 		if !ok {
 			return nil, fmt.Errorf("Invalid log level: ", logLevelFromEnv)
 		}
-	}
-
-	listenHost := "0.0.0.0"
-	listenHostFromEnv := os.Getenv("LISTEN_HOST")
-	if listenHostFromEnv != "" {
-		listenHost = listenHostFromEnv
 	}
 
 	listenPort := "8080"
@@ -59,7 +52,6 @@ func New() (*Config, error) {
 	}
 	return &Config{
 		LogLevel:   logLevel,
-		ListenHost: listenHost,
 		ListenPort: listenPort,
 		Username:   username,
 		Password:   password,

@@ -104,7 +104,7 @@ func TestSuite(t *testing.T) {
 		}
 		brokerAPI = brokerapi.New(broker, logger, credentials)
 
-		brokerUrl = fmt.Sprintf("http://%s", broker.Config.ListenHost+":"+listenPort)
+		brokerUrl = fmt.Sprintf("http://%s", "127.0.0.1:"+listenPort)
 	})
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Broker Suite")
