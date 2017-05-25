@@ -9,7 +9,7 @@ import (
 	"net/url"
 )
 
-// New creates new client
+// New creates a struct responsible for the communcation with the compose API.
 func New(token string, apiURL *url.URL) *Client {
 	return &Client{
 		Token:  token,
@@ -66,7 +66,8 @@ func validateResponse(resp *http.Response, err error) (Response, error) {
 	return cr, nil
 }
 
-// CreateDeployment creates new deployment
+// CreateDeployment will execute an API call to deployment with the use of an
+// existing client.
 func (c *Client) CreateDeployment(accountID, name, dbtype, dataCenter, version string, units int, ssl, wiredtiger bool) (Recipe, error) {
 
 	depReq := struct {

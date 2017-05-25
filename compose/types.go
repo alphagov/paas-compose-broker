@@ -2,13 +2,15 @@ package compose
 
 import "net/url"
 
-// Client stores compose token and API URL
+// Client will define some parameters and be used to communicate with the
+// Compose API.
 type Client struct {
 	Token  string
 	APIURL *url.URL
 }
 
-// Response stores compose API response json
+// Response will be responsible struct for whatever comes back from the API at
+// a time.
 type Response struct {
 	Embedded struct {
 		Deployments []Deployment `json:"deployments"`
@@ -17,14 +19,14 @@ type Response struct {
 	} `json:"_embedded"`
 }
 
-// Account stores information about account to which your user is a member.
+// Account stores information of your user belonging.
 type Account struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug,omitempty"`
 }
 
-// Recipe is a process, or processes, which performs a task
+// Recipe is a process, which performs a job on Compose backend.
 type Recipe struct {
 	ID           string `json:"id"`
 	Template     string `json:"template"`
@@ -37,7 +39,8 @@ type Recipe struct {
 	Name         string `json:"name"`
 }
 
-// Deployment stores deployment data
+// Deployment will consist of some useful data, that will comeback from Compose
+// regarding our specific deployment.
 type Deployment struct {
 	ID                  string             `json:"id,omitempty"`
 	AccountID           string             `json:"account_id,omitempty"`
@@ -55,7 +58,8 @@ type Deployment struct {
 	ConnectionStrings   *ConnectionStrings `json:"connection_strings,omitempty"`
 }
 
-// ConnectionStrings stores connection strings returned by deployment
+// ConnectionStrings are part of the deployment. These are ready to use strings,
+// which we could pass onto our app.
 type ConnectionStrings struct {
 	Health   []string `json:"health,omitempty"`
 	SSH      []string `json:"ssh,omitempty"`
@@ -65,7 +69,7 @@ type ConnectionStrings struct {
 	Direct   []string `json:"direct,omitempty"`
 }
 
-// Links stores UI URLs
+// Links to different UI components returned as part of the deployment.
 type Links struct {
 	ComposeWebUI struct {
 		Href      string `json:"href,omitempty"`
