@@ -23,7 +23,9 @@ func (c *Client) requestDo(reqtype, path string, body []byte) (resp *http.Respon
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
+
 	switch reqtype {
 	default:
 		req.Header.Set("Content-Type", "application/hal+json")
