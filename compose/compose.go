@@ -10,11 +10,20 @@ import (
 )
 
 // New creates a struct responsible for the communcation with the compose API.
-func New(token string, apiURL *url.URL) *Client {
-	return &Client{
+func New(token string, apiURL *url.URL) (*Client, error) {
+	if token == "" {
+		return nil, fmt.Errorf("client: token should not be empty")
+	}
+	if apiURL == nil {
+		return nil, fmt.Errorf("client: apiURl should not be nil")
+	}
+
+	client := &Client{
 		Token:  token,
 		APIURL: apiURL,
 	}
+
+	return client, nil
 }
 
 func (c *Client) requestDo(reqtype, path string, body []byte) (resp *http.Response, err error) {
