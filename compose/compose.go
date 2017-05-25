@@ -56,18 +56,6 @@ func decodeResponse(r *http.Response, v interface{}) error {
 	return err
 }
 
-func validateResponse(resp *http.Response, err error) (Response, error) {
-	cr := Response{}
-	if err != nil {
-		return cr, err
-	}
-	err = decodeResponse(resp, &cr)
-	if err != nil {
-		return cr, err
-	}
-	return cr, nil
-}
-
 // CreateDeployment will execute an API call to deployment with the use of an
 // existing client.
 func (c *Client) CreateDeployment(accountID, name, dbtype, dataCenter, version string, units int, ssl, wiredtiger bool) (Recipe, error) {
