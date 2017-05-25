@@ -58,35 +58,21 @@ func decodeResponse(r *http.Response, v interface{}) error {
 
 // CreateDeployment will execute an API call to deployment with the use of an
 // existing client.
-func (c *Client) CreateDeployment(accountID, name, dbtype, dataCenter, version string, units int, ssl, wiredtiger bool) (Recipe, error) {
+func (c *Client) CreateDeployment(deployment *Deployment) (*Deployment, error) {
+	body, err := json.Marshal(&deployment)
+	if err != nil {
+		return nil, err
+	}
 
-	depReq := struct {
-		Deployment `json:"deployment"`
-	}{
-		Deployment{
-			AccountID:  accountID,
-			Name:       name,
-			Type:       dbtype,
-			Datacenter: dataCenter,
-			Version:    version,
-			Units:      units,
-			SSL:        ssl,
-			WiredTiger: wiredtiger,
-		},
-	}
-	depResp := Recipe{}
-	var body []byte
-	body, err := json.Marshal(&depReq)
+	res, err := c.requestDo("POST", "/deployments", body)
 	if err != nil {
-		return depResp, err
+		return nil, err
 	}
-	resp, err := c.requestDo("POST", "/deployments", body)
+
+	err = decodeResponse(res, &deployment)
 	if err != nil {
-		return depResp, err
+		return nil, err
 	}
-	err = decodeResponse(resp, &depResp)
-	if err != nil {
-		return depResp, err
-	}
-	return depResp, nil
+
+	return deployment, nil
 }
