@@ -38,6 +38,7 @@ func (c *Client) requestDo(reqtype, path string, body []byte) (resp *http.Respon
 	if err != nil {
 		return nil, err
 	}
+	// TODO make sure, we will be always expecting <= 202 http response code.
 	if resp.StatusCode > 202 {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return nil, fmt.Errorf("%s", string(body))
@@ -53,6 +54,7 @@ func decodeResponse(r *http.Response, v interface{}) error {
 
 	bodyBytes, _ := ioutil.ReadAll(r.Body)
 	err := json.Unmarshal(bodyBytes, &v)
+
 	return err
 }
 
