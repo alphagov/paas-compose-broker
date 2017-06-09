@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -35,4 +36,19 @@ func squashErrors(errs []error) error {
 
 func JDBCURI(scheme, hostname, port, dbname, username, password string) string {
 	return fmt.Sprintf("jdbc:mongodb://%s:%s/%s?user=%s&password=%s", hostname, port, dbname, username, password)
+}
+
+func makeOperationData(operationType, recipeID string) (string, error) {
+
+	operationData := OperationData{
+		Type:     operationType,
+		RecipeID: recipeID,
+	}
+
+	data, err := json.Marshal(operationData)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
 }

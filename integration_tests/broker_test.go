@@ -125,7 +125,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
 			body := readResponseBody(responseRecorder.Body)
-			Expect(string(body)).To(ContainSubstring(`{"operation":"provision-recipe-id"}`))
+			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 
 		It("allows user provided parameters", func() {
@@ -156,7 +156,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
 			body := readResponseBody(responseRecorder.Body)
-			Expect(string(body)).To(ContainSubstring(`{"operation":"provision-recipe-id"}`))
+			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 	})
 
@@ -175,7 +175,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 		Expect(fakeComposeClient.DeprovisionDeploymentID).To(Equal(deployment.ID))
 		Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
 		body := readResponseBody(responseRecorder.Body)
-		Expect(string(body)).To(ContainSubstring(`{"operation":"deprovision-recipe-id"}`))
+		Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"deprovision-recipe-id\",\"type\":\"deprovision\"}`))
 	})
 
 	It("can provide a service instance binding", func() {
@@ -262,7 +262,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 				nil,
 				uriParam{key: "service_id", value: serviceID},
 				uriParam{key: "plan_id", value: planID},
-				uriParam{key: "operation", value: "recipe-id"},
+				uriParam{key: "operation", value: "{\"recipe_id\":\"recipe-id\",\"type\":\"provision\"}"},
 			)
 		})
 

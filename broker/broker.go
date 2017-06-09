@@ -42,6 +42,11 @@ type Credentials struct {
 	JDBCURI  string `json:"jdbcuri"`
 }
 
+type OperationData struct {
+	RecipeID string `json:"recipe_id"`
+	Type     string `json:"type"`
+}
+
 var composeStatus2State = map[string]brokerapi.LastOperationState{
 	"complete": brokerapi.Succeeded,
 	"running":  brokerapi.InProgress,
@@ -74,7 +79,9 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		asyncAllowedLogKey: asyncAllowed,
 	})
 
-	spec := brokerapi.ProvisionedServiceSpec{}
+	spec := brokerapi.ProvisionedServiceSpec{
+		IsAsync: true,
+	}
 
 	if !asyncAllowed {
 		return spec, brokerapi.ErrAsyncRequired
@@ -104,8 +111,12 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, squashErrors(errs)
 	}
 
-	spec.IsAsync = true
-	spec.OperationData = deployment.ProvisionRecipeID
+	operationData, err := makeOperationData("provision", deployment.ProvisionRecipeID)
+	if err != nil {
+		return spec, err
+	}
+
+	spec.OperationData = operationData
 
 	return spec, nil
 }
@@ -117,7 +128,9 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		asyncAllowedLogKey: asyncAllowed,
 	})
 
-	spec := brokerapi.DeprovisionServiceSpec{}
+	spec := brokerapi.DeprovisionServiceSpec{
+		IsAsync: true,
+	}
 
 	if !asyncAllowed {
 		return spec, brokerapi.ErrAsyncRequired
@@ -133,8 +146,12 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		return spec, squashErrors(errs)
 	}
 
-	spec.IsAsync = true
-	spec.OperationData = recipe.ID
+	operationData, err := makeOperationData("deprovision", recipe.ID)
+	if err != nil {
+		return spec, err
+	}
+
+	spec.OperationData = operationData
 
 	return spec, nil
 }
@@ -202,7 +219,9 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		asyncAllowedLogKey: asyncAllowed,
 	})
 
-	spec := brokerapi.UpdateServiceSpec{}
+	spec := brokerapi.UpdateServiceSpec{
+		IsAsync: true,
+	}
 
 	if !asyncAllowed {
 		return spec, brokerapi.ErrAsyncRequired
@@ -237,23 +256,33 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, squashErrors(errs)
 	}
 
-	spec.IsAsync = true
-	spec.OperationData = recipe.ID
+	operationData, err := makeOperationData("update", recipe.ID)
+	if err != nil {
+		return spec, err
+	}
+
+	spec.OperationData = operationData
 
 	return spec, nil
 }
 
-func (b *Broker) LastOperation(context context.Context, instanceID, operationData string) (brokerapi.LastOperation, error) {
+func (b *Broker) LastOperation(context context.Context, instanceID, operationDataJson string) (brokerapi.LastOperation, error) {
+
+	lastOperation := brokerapi.LastOperation{}
+	operationData := OperationData{}
+	err := json.Unmarshal([]byte(operationDataJson), &operationData)
+	if err != nil {
+		return lastOperation, err
+	}
+
 	b.Logger.Debug("last-operation", lager.Data{
 		instanceIDLogKey:    instanceID,
-		operationDataLogKey: operationData,
+		operationDataLogKey: operationData.RecipeID,
 	})
 
-	op := brokerapi.LastOperation{}
-
-	recipe, errs := b.Compose.GetRecipe(operationData)
+	recipe, errs := b.Compose.GetRecipe(operationData.RecipeID)
 	if len(errs) > 0 {
-		return op, squashErrors(errs)
+		return lastOperation, squashErrors(errs)
 	}
 
 	state := composeStatus2State[recipe.Status]
@@ -262,8 +291,8 @@ func (b *Broker) LastOperation(context context.Context, instanceID, operationDat
 		state = brokerapi.Failed
 	}
 
-	op.State = state
-	op.Description = recipe.StatusDetail
+	lastOperation.State = state
+	lastOperation.Description = recipe.StatusDetail
 
-	return op, nil
+	return lastOperation, nil
 }
