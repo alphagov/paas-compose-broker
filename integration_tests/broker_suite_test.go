@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -20,20 +21,25 @@ var (
 	newCatalog catalog.ComposeCatalog
 	logger     lager.Logger
 	brokerUrl  string
+	username   string
+	password   string
+	err        error
 )
 
 const (
 	INSTANCE_CREATE_TIMEOUT = 15 * time.Minute
-	username                = "username"
-	password                = "password"
 	listenPort              = "8080"
+	randLength              = 10
+	letters                 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
 func TestSuite(t *testing.T) {
 	BeforeSuite(func() {
-		var err error
 
 		os.Setenv("PORT", listenPort)
+		username = randString(randLength)
+		password = randString(randLength)
+
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
 
@@ -89,4 +95,12 @@ func TestSuite(t *testing.T) {
 	})
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Broker Suite")
+
+func randString(n int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
