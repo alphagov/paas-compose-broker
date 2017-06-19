@@ -20,6 +20,10 @@ var (
 	newCatalog catalog.ComposeCatalog
 	logger     lager.Logger
 	brokerUrl  string
+	username   string
+	password   string
+	dbprefix   string
+	err        error
 )
 
 const (
@@ -28,20 +32,16 @@ const (
 	letters                 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
-var (
-	username string
-	password string
-	err      error
-)
-
 func TestSuite(t *testing.T) {
 	BeforeSuite(func() {
 
 		username = randString(randLength)
 		password = randString(randLength)
+		dbprefix = "test-suite"
 
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
+		os.Setenv("DB_PREFIX", dbprefix)
 
 		newConfig, err = config.New()
 		Expect(err).ToNot(HaveOccurred())

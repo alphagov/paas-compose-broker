@@ -97,8 +97,13 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, err
 	}
 
+	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	if err != nil {
+		return spec, err
+	}
+
 	params := composeapi.DeploymentParams{
-		Name:         instanceID,
+		Name:         instanceName,
 		AccountID:    b.Config.AccountID,
 		Datacenter:   ComposeDatacenter,
 		DatabaseType: service.Name,
@@ -136,9 +141,14 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	deployment, err := findDeployment(b.Compose, instanceID)
+	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return spec, err
+	}
+
+	deployment, err := findDeployment(b.Compose, instanceName)
+	if err != nil {
+		return spec, brokerapi.ErrInstanceDoesNotExist
 	}
 
 	recipe, errs := b.Compose.DeprovisionDeployment(deployment.ID)
@@ -165,7 +175,12 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 
 	binding := brokerapi.Binding{}
 
-	deploymentMeta, err := findDeployment(b.Compose, instanceID)
+	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	if err != nil {
+		return binding, err
+	}
+
+	deploymentMeta, err := findDeployment(b.Compose, instanceName)
 	if err != nil {
 		return binding, err
 	}
@@ -232,7 +247,12 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, err
 	}
 
-	deployment, err := findDeployment(b.Compose, instanceID)
+	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	if err != nil {
+		return spec, err
+	}
+
+	deployment, err := findDeployment(b.Compose, instanceName)
 	if err != nil {
 		return spec, err
 	}

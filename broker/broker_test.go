@@ -32,4 +32,16 @@ var _ = Describe("Broker", func() {
 			Expect(operationData).To(Equal(`{"recipe_id":"123","type":"expected_type"}`))
 		})
 	})
+	Describe("makeInstanceName", func() {
+		It("can make an instance name", func() {
+			instanceName, err := makeInstanceName("test", "15e332e8-4afa-4c41-82a3-f44b18eba448")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(instanceName).To(Equal("test-15e332e8-4afa-4c41-82a3-f44b18eba448"))
+		})
+		It("can trim spaces from dbprefix", func() {
+			instanceName, err := makeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(instanceName).To(Equal("trim-spaces-0f38f9c2-085c-41ec-87bf-e38b72f7fdaa"))
+		})
+	})
 })

@@ -2,6 +2,7 @@ package broker
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -51,4 +52,14 @@ func makeOperationData(operationType, recipeID string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+func makeInstanceName(dbPrefix, instanceID string) (string, error) {
+	if dbPrefix == "" {
+		return "", errors.New("dbPrefix can't be empty")
+	}
+	if instanceID == "" {
+		return "", errors.New("instanceID can't be empty")
+	}
+	return fmt.Sprintf("%s-%s", strings.TrimSpace(dbPrefix), instanceID), nil
 }

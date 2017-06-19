@@ -45,3 +45,9 @@ This is a work-in-progress implementation of a service broker for services provi
    ```
    cf enable-service-access mongodb
    ```
+
+## Environmental variables
+
+`USERNAME` - broker user name used for basic authentication
+`PASSWORD` - username password
+`DB_PREFIX` - a prefix that can be used to tag instances. Defaults to `compose-broker`
