@@ -33,6 +33,16 @@ const (
 	planID    = "fdfd4fc1-ce69-451c-a436-c2e2795b9abe"
 	timeout   = 10 * time.Second
 )
+
+type bindingResponse struct {
+	Credentials map[string]string `json:"credentials"`
+}
+
+type Person struct {
+	Name  string
+	Phone string
+}
+
 var _ = Describe("Broker with real Compose client", func() {
 
 	var (
@@ -46,6 +56,7 @@ var _ = Describe("Broker with real Compose client", func() {
 		appGuid           string
 		paramJSON         string
 		acceptsIncomplete bool
+		data              bindingResponse
 	)
 
 	BeforeEach(func() {
@@ -147,28 +158,41 @@ var _ = Describe("Broker with real Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
 
-			var data struct {
-				Credentials struct {
-					Host     string `json:"host"`
-					Port     string `json:"port"`
-					Name     string `json:"name"`
-					Username string `json:"username"`
-					Password string `json:"password"`
-					URI      string `json:"uri"`
-					JDBCURI  string `json:"jdbcuri"`
-				} `json:"credentials"`
-			}
 			body := helper.ReadResponseBody(responseRecorder.Body)
 			err := json.NewDecoder(bytes.NewReader(body)).Decode(&data)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(data.Credentials.Host).ToNot(BeEmpty())
-			Expect(data.Credentials.Port).ToNot(BeEmpty())
-			Expect(data.Credentials.Name).ToNot(BeEmpty())
-			Expect(data.Credentials.Username).ToNot(BeEmpty())
-			Expect(data.Credentials.Password).ToNot(BeEmpty())
-			Expect(data.Credentials.URI).ToNot(BeEmpty())
-			Expect(data.Credentials.JDBCURI).ToNot(BeEmpty())
+		})
 
+		By("connecting to an instance", func() {
+			// This is work around for https://github.com/go-mgo/mgo/issues/84
+			uri := strings.TrimSuffix(data.Credentials["uri"], "?ssl=true")
+			mongourl, err := mgo.ParseURL(uri)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Compose has self-signed certs for mongo nd we dont pass ca_certificate_base64 in the binding
+			tlsConfig := &tls.Config{
+				InsecureSkipVerify: true,
+			}
+			mongourl.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
+				conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
+				return conn, err
+			}
+			mongourl.Timeout = timeout
+			session, err := mgo.DialWithInfo(mongourl)
+			Expect(err).ToNot(HaveOccurred())
+			defer session.Close()
+
+			name := "John Jones"
+			phone := "+447777777777"
+			db := session.DB("test").C("people")
+			err = db.Insert(&Person{Name: name, Phone: phone})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := Person{}
+			err = db.Find(bson.M{"name": name}).One(&result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Phone).To(Equal(phone))
+			Expect(result.Name).To(Equal(name))
 		})
 	})
 })
