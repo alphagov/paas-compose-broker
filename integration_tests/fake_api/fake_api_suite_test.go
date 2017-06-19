@@ -1,7 +1,6 @@
-package integration_test
+package fake_api_test
 
 import (
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -28,7 +27,6 @@ var (
 
 const (
 	INSTANCE_CREATE_TIMEOUT = 15 * time.Minute
-	listenPort              = "8080"
 	randLength              = 10
 	letters                 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
@@ -36,7 +34,6 @@ const (
 func TestSuite(t *testing.T) {
 	BeforeSuite(func() {
 
-		os.Setenv("PORT", listenPort)
 		username = randString(randLength)
 		password = randString(randLength)
 
@@ -91,10 +88,10 @@ func TestSuite(t *testing.T) {
 		newCatalog = catalog.ComposeCatalog{}
 		err = newCatalog.Load(catalogData)
 		Expect(err).ToNot(HaveOccurred())
-		brokerUrl = fmt.Sprintf("http://%s", "127.0.0.1:"+listenPort)
 	})
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Broker Suite")
+	RunSpecs(t, "Fake API Suite")
+}
 
 func randString(n int) string {
 	rand.Seed(time.Now().UnixNano())

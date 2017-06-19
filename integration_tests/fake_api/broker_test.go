@@ -1,11 +1,9 @@
-package integration_test
+package fake_api_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/compose/fakes"
+	"github.com/alphagov/paas-compose-broker/integration_tests/helper"
 	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -90,10 +89,10 @@ var _ = Describe("Broker with fake Compose client", func() {
 	})
 
 	It("serves the catalog endpoint", func() {
-		req := newRequest("GET", "/v2/catalog", nil)
+		req := helper.NewRequest("GET", "/v2/catalog", nil, username, password)
 		brokerAPI.ServeHTTP(responseRecorder, req)
 		Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-		body := readResponseBody(responseRecorder.Body)
+		body := helper.ReadResponseBody(responseRecorder.Body)
 		var returnedCatalog expectedCatalog
 		err := json.Unmarshal(body, &returnedCatalog)
 		Expect(err).ToNot(HaveOccurred())
@@ -110,8 +109,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 				  "space_guid": "space-id",
 				  "parameters": %s
 			  }`, serviceID, planID, paramJSON))
-			param := uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)}
-			req := newRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), param)
+			param := helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)}
+			req := helper.NewRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), username, password, param)
 			brokerAPI.ServeHTTP(responseRecorder, req)
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
@@ -124,7 +123,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 
@@ -141,8 +140,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 					  "version": "1"
 				  }
 			  }`, serviceID, planID))
-			param := uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)}
-			req := newRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), param)
+			param := helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)}
+			req := helper.NewRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), username, password, param)
 			brokerAPI.ServeHTTP(responseRecorder, req)
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
@@ -155,26 +154,28 @@ var _ = Describe("Broker with fake Compose client", func() {
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 	})
 
 	It("deprovisions the correct service instance", func() {
 		path := "/v2/service_instances/" + deployment.Name
-		req := newRequest(
+		req := helper.NewRequest(
 			"DELETE",
 			path,
 			nil,
-			uriParam{key: "service_id", value: serviceID},
-			uriParam{key: "plan_id", value: planID},
-			uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)},
+			username,
+			password,
+			helper.UriParam{Key: "service_id", Value: serviceID},
+			helper.UriParam{Key: "plan_id", Value: planID},
+			helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)},
 		)
 		brokerAPI.ServeHTTP(responseRecorder, req)
 
 		Expect(fakeComposeClient.DeprovisionDeploymentID).To(Equal(deployment.ID))
 		Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
-		body := readResponseBody(responseRecorder.Body)
+		body := helper.ReadResponseBody(responseRecorder.Body)
 		Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"deprovision-recipe-id\",\"type\":\"deprovision\"}`))
 	})
 
@@ -188,16 +189,17 @@ var _ = Describe("Broker with fake Compose client", func() {
 				},
 				"parameters": "%s"
 			}`, serviceID, planID, appGuid, paramJSON))
-		req := newRequest(
+		req := helper.NewRequest(
 			"PUT",
 			path,
 			bytes.NewBuffer(bindingDetailsJson),
+			username,
+			password,
 		)
 		brokerAPI.ServeHTTP(responseRecorder, req)
 		Expect(responseRecorder.Code).To(Equal(http.StatusCreated))
 
 		var data bindingResponse
-
 		body := helper.ReadResponseBody(responseRecorder.Body)
 		err := json.NewDecoder(bytes.NewReader(body)).Decode(&data)
 		Expect(err).ToNot(HaveOccurred())
@@ -216,10 +218,12 @@ var _ = Describe("Broker with fake Compose client", func() {
 				"service_id": "%s",
 				"plan_id": "%s",
 			}`, serviceID, planID))
-		req := newRequest(
+		req := helper.NewRequest(
 			"DELETE",
 			path,
 			bytes.NewBuffer(unbindingDetailsJson),
+			username,
+			password,
 		)
 		brokerAPI.ServeHTTP(responseRecorder, req)
 		Expect(responseRecorder.Code).To(Equal(http.StatusOK))
@@ -236,15 +240,17 @@ var _ = Describe("Broker with fake Compose client", func() {
 				},
 				"parameters": %s
 			}`, serviceID, newPlanID, planID, paramJSON))
-		req := newRequest(
+		req := helper.NewRequest(
 			"PATCH",
 			path,
 			bytes.NewBuffer(provisionDetailsJson),
-			uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)},
+			username,
+			password,
+			helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)},
 		)
 		brokerAPI.ServeHTTP(responseRecorder, req)
 		Expect(responseRecorder.Code).To(Equal(http.StatusInternalServerError))
-		body := readResponseBody(responseRecorder.Body)
+		body := helper.ReadResponseBody(responseRecorder.Body)
 		Expect(string(body)).To(ContainSubstring("changing plans is not currently supported"))
 	})
 
@@ -256,13 +262,15 @@ var _ = Describe("Broker with fake Compose client", func() {
 
 		BeforeEach(func() {
 			path = fmt.Sprintf("/v2/service_instances/%s/last_operation", instanceID)
-			req = newRequest(
+			req = helper.NewRequest(
 				"GET",
 				path,
 				nil,
-				uriParam{key: "service_id", value: serviceID},
-				uriParam{key: "plan_id", value: planID},
-				uriParam{key: "operation", value: "{\"recipe_id\":\"recipe-id\",\"type\":\"provision\"}"},
+				username,
+				password,
+				helper.UriParam{Key: "service_id", Value: serviceID},
+				helper.UriParam{Key: "plan_id", Value: planID},
+				helper.UriParam{Key: "operation", Value: "{\"recipe_id\":\"recipe-id\",\"type\":\"provision\"}"},
 			)
 		})
 
@@ -271,7 +279,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 			Expect(responseRecorder.Code).To(Equal(http.StatusInternalServerError))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring(`{"description":"error: failed to get recipe by ID"}`))
 		})
 
@@ -280,7 +288,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring("failed"))
 		})
 
@@ -289,7 +297,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring("succeeded"))
 		})
 
@@ -298,7 +306,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring("in progress"))
 		})
 
@@ -307,31 +315,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			Expect(string(body)).To(ContainSubstring("in progress"))
 		})
 	})
 })
-
-type uriParam struct {
-	key   string
-	value string
-}
-
-func newRequest(method, path string, body io.Reader, params ...uriParam) *http.Request {
-	brokerUrl := fmt.Sprintf("http://%s", "127.0.0.1:"+listenPort+path)
-	req := httptest.NewRequest(method, brokerUrl, body)
-	req.SetBasicAuth(username, password)
-	q := req.URL.Query()
-	for _, p := range params {
-		q.Add(p.key, p.value)
-	}
-	req.URL.RawQuery = q.Encode()
-	return req
-}
-
-func readResponseBody(responseBody *bytes.Buffer) []byte {
-	body, err := ioutil.ReadAll(responseBody)
-	Expect(err).ToNot(HaveOccurred())
-	return body
-}

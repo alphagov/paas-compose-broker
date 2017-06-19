@@ -1,15 +1,22 @@
-package integration_test
+package real_api_test
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"time"
 
+	mgo "gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
+
 	"github.com/alphagov/paas-compose-broker/broker"
+	"github.com/alphagov/paas-compose-broker/integration_tests/helper"
 	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -17,6 +24,15 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+var (
+	brokerAPI http.Handler
+)
+
+const (
+	serviceID = "36f8bf47-c9e7-46d9-880f-5dfc838d05cb"
+	planID    = "fdfd4fc1-ce69-451c-a436-c2e2795b9abe"
+	timeout   = 10 * time.Second
+)
 var _ = Describe("Broker with real Compose client", func() {
 
 	var (
@@ -55,17 +71,19 @@ var _ = Describe("Broker with real Compose client", func() {
 	AfterEach(func() {
 		By("De-provisioning an instance", func() {
 			path := "/v2/service_instances/" + instanceID
-			request := newRequest(
+			request := helper.NewRequest(
 				"DELETE",
 				path,
 				nil,
-				uriParam{key: "service_id", value: serviceID},
-				uriParam{key: "plan_id", value: planID},
-				uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)},
+				username,
+				password,
+				helper.UriParam{Key: "service_id", Value: serviceID},
+				helper.UriParam{Key: "plan_id", Value: planID},
+				helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)},
 			)
 			brokerAPI.ServeHTTP(responseRecorder, request)
 			Expect(responseRecorder.Code).To(BeEquivalentTo(http.StatusAccepted))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			var deprovisionResp brokerapi.DeprovisionResponse
 			err = json.Unmarshal(body, &deprovisionResp)
 			Expect(err).ToNot(HaveOccurred())
@@ -91,11 +109,11 @@ var _ = Describe("Broker with real Compose client", func() {
 					}
 				}
 			`, serviceID, planID, mongoVersion))
-			param := uriParam{key: "accepts_incomplete", value: strconv.FormatBool(acceptsIncomplete)}
-			request := newRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), param)
+			param := helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)}
+			request := helper.NewRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), username, password, param)
 			brokerAPI.ServeHTTP(responseRecorder, request)
 			Expect(responseRecorder.Code).To(BeEquivalentTo(http.StatusAccepted))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			var provisionResp brokerapi.ProvisioningResponse
 			err = json.Unmarshal(body, &provisionResp)
 			Expect(err).ToNot(HaveOccurred())
@@ -118,10 +136,12 @@ var _ = Describe("Broker with real Compose client", func() {
 				appGuid,
 				paramJSON,
 			))
-			req := newRequest(
+			req := helper.NewRequest(
 				"PUT",
 				path,
 				bytes.NewBuffer(bindingDetailsJson),
+				username,
+				password,
 			)
 
 			brokerAPI.ServeHTTP(responseRecorder, req)
@@ -138,7 +158,7 @@ var _ = Describe("Broker with real Compose client", func() {
 					JDBCURI  string `json:"jdbcuri"`
 				} `json:"credentials"`
 			}
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			err := json.NewDecoder(bytes.NewReader(body)).Decode(&data)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(data.Credentials.Host).ToNot(BeEmpty())
@@ -162,19 +182,21 @@ func pollForOperationCompletion(instanceID, serviceID, planID, operation string)
 		func() string {
 			fmt.Fprint(GinkgoWriter, ".")
 			path := fmt.Sprintf("/v2/service_instances/%s/last_operation", instanceID)
-			request := newRequest(
+			request := helper.NewRequest(
 				"GET",
 				path,
 				nil,
-				uriParam{key: "service_id", value: serviceID},
-				uriParam{key: "plan_id", value: planID},
-				uriParam{key: "operation", value: operation},
+				username,
+				password,
+				helper.UriParam{Key: "service_id", Value: serviceID},
+				helper.UriParam{Key: "plan_id", Value: planID},
+				helper.UriParam{Key: "operation", Value: operation},
 			)
 
 			responseRecorder := httptest.NewRecorder()
 			brokerAPI.ServeHTTP(responseRecorder, request)
 			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
-			body := readResponseBody(responseRecorder.Body)
+			body := helper.ReadResponseBody(responseRecorder.Body)
 			var lastOperation brokerapi.LastOperationResponse
 			err = json.Unmarshal(body, &lastOperation)
 			Expect(err).ToNot(HaveOccurred())
