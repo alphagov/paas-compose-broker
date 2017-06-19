@@ -7,8 +7,10 @@ import (
 	"os"
 
 	"code.cloudfoundry.org/lager"
+
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/catalog"
+	"github.com/alphagov/paas-compose-broker/compose"
 	"github.com/alphagov/paas-compose-broker/config"
 	"github.com/pivotal-cf/brokerapi"
 )
@@ -34,7 +36,8 @@ func main() {
 		logger.Error("opening catalog file", err)
 		os.Exit(1)
 	}
-	newCatalog, err := catalog.New(catalogFile)
+	newCatalog := catalog.ComposeCatalog{}
+	err = newCatalog.Load(catalogFile)
 	if err != nil {
 		logger.Error("loading catalog", err)
 		os.Exit(1)
@@ -44,14 +47,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	broker := broker.New(config, newCatalog, &logger)
+	compose, err := compose.NewClient(config.APIToken)
+	if err != nil {
+		logger.Error("could not create composeapi client", err)
+		os.Exit(1)
+	}
+
+	brokerInstance, err := broker.New(compose, config, &newCatalog, logger)
+	if err != nil {
+		logger.Error("could not initialise broker", err)
+		os.Exit(1)
+	}
+
 	credentials := brokerapi.BrokerCredentials{
 		Username: config.Username,
 		Password: config.Password,
 	}
-	brokerAPI := brokerapi.New(broker, logger, credentials)
+	brokerAPI := brokerapi.New(brokerInstance, logger, credentials)
 
 	http.Handle("/", brokerAPI)
-	logger.Info("http-listen", lager.Data{"info": fmt.Sprintf("Service Broker started on " + "0.0.0.0:" + broker.Config.ListenPort)})
-	logger.Error("http-listen", http.ListenAndServe(":"+broker.Config.ListenPort, nil))
+	logger.Info("http-listen", lager.Data{"info": fmt.Sprintf("Service Broker started on " + "0.0.0.0:" + brokerInstance.Config.ListenPort)})
+	logger.Error("http-listen", http.ListenAndServe(":"+brokerInstance.Config.ListenPort, nil))
 }

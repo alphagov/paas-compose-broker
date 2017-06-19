@@ -34,3 +34,14 @@ This is a work-in-progress implementation of a service broker for services provi
   ```sh
   curl -k -u compose-broker:unguessable https://compose-broker.${DEPLOY_ENV}.cloudfoundry-apps-domain.example.com/v2/catalog
   ```
+
+* Register the service:
+
+  ```
+   cf update-service-broker compose-broker compose-broker "$COMPOSE_BROKER_PASS" "https://compose-broker.${APPS_DNS_ZONE_NAME}"
+  ```
+* Enable the service:
+
+   ```
+   cf enable-service-access mongodb
+   ```

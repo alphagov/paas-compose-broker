@@ -18,6 +18,8 @@ var (
 )
 
 type Config struct {
+	AccountID  string
+	APIToken   string
 	LogLevel   lager.LogLevel
 	ListenPort string
 	Username   string
@@ -31,7 +33,7 @@ func New() (*Config, error) {
 		var ok bool
 		logLevel, ok = logLevels[strings.ToUpper(logLevelFromEnv)]
 		if !ok {
-			return nil, fmt.Errorf("Invalid log level: ", logLevelFromEnv)
+			return nil, fmt.Errorf("Invalid log level: %s", logLevelFromEnv)
 		}
 	}
 
@@ -50,7 +52,20 @@ func New() (*Config, error) {
 	if password == "" {
 		return nil, fmt.Errorf("Please export $PASSWORD")
 	}
+
+	accountID := os.Getenv("ACCOUNT_ID")
+	if accountID == "" {
+		return nil, fmt.Errorf("Please export $ACCOUNT_ID")
+	}
+
+	token := os.Getenv("ACCESS_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("Please export $ACCESS_TOKEN")
+	}
+
 	return &Config{
+		AccountID:  accountID,
+		APIToken:   token,
 		LogLevel:   logLevel,
 		ListenPort: listenPort,
 		Username:   username,
