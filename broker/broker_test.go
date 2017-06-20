@@ -1,22 +1,11 @@
 package broker
 
 import (
-	"errors"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Broker", func() {
-	Describe("squashErrors", func() {
-		It("can squash errors", func() {
-			errors := []error{
-				errors.New("first"),
-				errors.New("second"),
-			}
-			Expect(squashErrors(errors)).To(MatchError("first; second"))
-		})
-	})
 
 	Describe("JDBCURI", func() {
 		It("can create JDBC URI", func() {

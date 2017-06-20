@@ -10,10 +10,10 @@ import (
 	composeapi "github.com/compose/gocomposeapi"
 )
 
-func findDeployment(compose compose.Client, name string) (*composeapi.Deployment, error) {
-	deployments, errs := compose.GetDeployments()
+func findDeployment(c compose.Client, name string) (*composeapi.Deployment, error) {
+	deployments, errs := c.GetDeployments()
 	if len(errs) > 0 {
-		return nil, squashErrors(errs)
+		return nil, compose.SquashErrors(errs)
 	}
 
 	for _, deployment := range *deployments {
@@ -23,16 +23,6 @@ func findDeployment(compose compose.Client, name string) (*composeapi.Deployment
 	}
 
 	return nil, fmt.Errorf("deployment: not found")
-}
-
-func squashErrors(errs []error) error {
-	var s []string
-
-	for _, err := range errs {
-		s = append(s, err.Error())
-	}
-
-	return fmt.Errorf("%s", strings.Join(s, "; "))
 }
 
 func JDBCURI(scheme, hostname, port, dbname, username, password string) string {

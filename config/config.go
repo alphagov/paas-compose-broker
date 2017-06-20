@@ -54,11 +54,6 @@ func New() (*Config, error) {
 		return nil, fmt.Errorf("Please export $PASSWORD")
 	}
 
-	accountID := os.Getenv("ACCOUNT_ID")
-	if accountID == "" {
-		return nil, fmt.Errorf("Please export $ACCOUNT_ID")
-	}
-
 	token := os.Getenv("ACCESS_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("Please export $ACCESS_TOKEN")
@@ -70,7 +65,6 @@ func New() (*Config, error) {
 	}
 
 	return &Config{
-		AccountID:  accountID,
 		APIToken:   token,
 		LogLevel:   logLevel,
 		ListenPort: listenPort,

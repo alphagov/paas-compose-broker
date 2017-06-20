@@ -113,7 +113,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 
 	deployment, errs := b.Compose.CreateDeployment(params)
 	if len(errs) > 0 {
-		return spec, squashErrors(errs)
+		return spec, compose.SquashErrors(errs)
 	}
 
 	operationData, err := makeOperationData("provision", deployment.ProvisionRecipeID)
@@ -153,7 +153,7 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 
 	recipe, errs := b.Compose.DeprovisionDeployment(deployment.ID)
 	if len(errs) > 0 {
-		return spec, squashErrors(errs)
+		return spec, compose.SquashErrors(errs)
 	}
 
 	operationData, err := makeOperationData("deprovision", recipe.ID)
@@ -187,7 +187,7 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 
 	deployment, errs := b.Compose.GetDeployment(deploymentMeta.ID)
 	if len(errs) > 0 {
-		return binding, squashErrors(errs)
+		return binding, compose.SquashErrors(errs)
 	}
 	if deployment.Connection.Direct == nil || len(deployment.Connection.Direct) < 1 {
 		return binding, fmt.Errorf("failed to get connection string")
@@ -273,7 +273,7 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 
 	recipe, errs := b.Compose.SetScalings(params)
 	if len(errs) > 0 {
-		return spec, squashErrors(errs)
+		return spec, compose.SquashErrors(errs)
 	}
 
 	operationData, err := makeOperationData("update", recipe.ID)
@@ -302,7 +302,7 @@ func (b *Broker) LastOperation(context context.Context, instanceID, operationDat
 
 	recipe, errs := b.Compose.GetRecipe(operationData.RecipeID)
 	if len(errs) > 0 {
-		return lastOperation, squashErrors(errs)
+		return lastOperation, compose.SquashErrors(errs)
 	}
 
 	state := composeStatus2State[recipe.Status]

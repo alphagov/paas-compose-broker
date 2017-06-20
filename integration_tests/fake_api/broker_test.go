@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"strings"
 
@@ -117,7 +116,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
 				Name:         fmt.Sprintf("%s-%s", dbprefix, instanceID),
-				AccountID:    os.Getenv("ACCOUNT_ID"),
+				AccountID:    "",
 				Datacenter:   broker.ComposeDatacenter,
 				DatabaseType: "mongodb",
 				Units:        1,
@@ -148,7 +147,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
 				Name:         fmt.Sprintf("%s-%s", dbprefix, instanceID),
-				AccountID:    os.Getenv("ACCOUNT_ID"),
+				AccountID:    "",
 				Datacenter:   broker.ComposeDatacenter,
 				DatabaseType: "mongodb",
 				Units:        1,

@@ -1,6 +1,9 @@
 package compose
 
 import (
+	"fmt"
+	"strings"
+
 	composeapi "github.com/compose/gocomposeapi"
 )
 
@@ -15,4 +18,14 @@ type Client interface {
 
 func NewClient(apiToken string) (*composeapi.Client, error) {
 	return composeapi.NewClient(apiToken)
+}
+
+func SquashErrors(errs []error) error {
+	var s []string
+
+	for _, err := range errs {
+		s = append(s, err.Error())
+	}
+
+	return fmt.Errorf("%s", strings.Join(s, "; "))
 }
