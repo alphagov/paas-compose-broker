@@ -129,7 +129,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 
-		It("allows user provided parameters", func() {
+		It("ignores user provided parameters", func() {
 			path := "/v2/service_instances/" + instanceID
 			provisionDetailsJson := []byte(fmt.Sprintf(`{
 				  "service_id": "%s",
@@ -153,6 +153,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 				DatabaseType: "mongodb",
 				Units:        1,
 				SSL:          true,
+				WiredTiger:   false,
+				Version:      "",
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))

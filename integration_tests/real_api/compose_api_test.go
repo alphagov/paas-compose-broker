@@ -54,7 +54,6 @@ var _ = Describe("Broker with real Compose client", func() {
 		instanceID        string
 		bindingID         string
 		appGuid           string
-		paramJSON         string
 		acceptsIncomplete bool
 		data              bindingResponse
 	)
@@ -75,7 +74,6 @@ var _ = Describe("Broker with real Compose client", func() {
 		instanceID = uuid.NewV4().String()
 		bindingID = uuid.NewV4().String()
 		appGuid = uuid.NewV4().String()
-		paramJSON = "{}"
 		acceptsIncomplete = true
 	})
 
@@ -106,20 +104,15 @@ var _ = Describe("Broker with real Compose client", func() {
 	It("uses Compose API", func() {
 		By("provisioning an instance", func() {
 			path := "/v2/service_instances/" + instanceID
-			mongoVersion := "3.2.11"
 			provisionDetailsJson := []byte(fmt.Sprintf(`
 				{
 					"service_id": "%s",
 					"plan_id": "%s",
 					"organization_guid": "test-organization-id",
 					"space_guid": "space-id",
-					"parameters": {
-						"disable_ssl": true,
-						"wired_tiger": true,
-						"version": "%s"
-					}
+					"parameters": "{}"
 				}
-			`, serviceID, planID, mongoVersion))
+			`, serviceID, planID))
 			param := helper.UriParam{Key: "accepts_incomplete", Value: strconv.FormatBool(acceptsIncomplete)}
 			request := helper.NewRequest("PUT", path, bytes.NewBuffer(provisionDetailsJson), username, password, param)
 			brokerAPI.ServeHTTP(responseRecorder, request)
@@ -140,12 +133,11 @@ var _ = Describe("Broker with real Compose client", func() {
 					"bind_resource": {
 						"app_guid": "%s"
 					},
-					"parameters": "%s"
+					"parameters": "{}"
 				}`,
 				serviceID,
 				planID,
 				appGuid,
-				paramJSON,
 			))
 			req := helper.NewRequest(
 				"PUT",
