@@ -11,4 +11,7 @@ install:
 - true
 
 script:
+- go build -v . 
 - ./scripts/run-local-tests.sh
+
+

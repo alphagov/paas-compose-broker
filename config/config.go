@@ -24,6 +24,7 @@ type Config struct {
 	ListenPort string
 	Username   string
 	Password   string
+	DBPrefix   string
 }
 
 func New() (*Config, error) {
@@ -53,22 +54,22 @@ func New() (*Config, error) {
 		return nil, fmt.Errorf("Please export $PASSWORD")
 	}
 
-	accountID := os.Getenv("ACCOUNT_ID")
-	if accountID == "" {
-		return nil, fmt.Errorf("Please export $ACCOUNT_ID")
-	}
-
 	token := os.Getenv("ACCESS_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("Please export $ACCESS_TOKEN")
 	}
 
+	dbPrefix := os.Getenv("DB_PREFIX")
+	if dbPrefix == "" {
+		dbPrefix = "compose-broker"
+	}
+
 	return &Config{
-		AccountID:  accountID,
 		APIToken:   token,
 		LogLevel:   logLevel,
 		ListenPort: listenPort,
 		Username:   username,
 		Password:   password,
+		DBPrefix:   dbPrefix,
 	}, nil
 }

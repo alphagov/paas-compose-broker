@@ -22,6 +22,7 @@ var (
 	brokerUrl  string
 	username   string
 	password   string
+	dbprefix   string
 	err        error
 )
 
@@ -36,9 +37,11 @@ func TestSuite(t *testing.T) {
 
 		username = randString(randLength)
 		password = randString(randLength)
+		dbprefix = randString(randLength)
 
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
+		os.Setenv("DB_PREFIX", dbprefix)
 
 		newConfig, err = config.New()
 		Expect(err).ToNot(HaveOccurred())

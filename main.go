@@ -47,13 +47,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	compose, err := compose.NewClient(config.APIToken)
+	composeapi, err := compose.NewClient(config.APIToken)
 	if err != nil {
 		logger.Error("could not create composeapi client", err)
 		os.Exit(1)
 	}
 
-	brokerInstance, err := broker.New(compose, config, &newCatalog, logger)
+	account, errors := composeapi.GetAccount()
+	if len(errors) > 0 {
+		logger.Error("could not get account id", compose.SquashErrors(errors))
+		os.Exit(1)
+	}
+	config.AccountID = account.ID
+
+	brokerInstance, err := broker.New(composeapi, config, &newCatalog, logger)
 	if err != nil {
 		logger.Error("could not initialise broker", err)
 		os.Exit(1)

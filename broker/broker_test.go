@@ -1,22 +1,11 @@
 package broker
 
 import (
-	"errors"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Broker", func() {
-	Describe("squashErrors", func() {
-		It("can squash errors", func() {
-			errors := []error{
-				errors.New("first"),
-				errors.New("second"),
-			}
-			Expect(squashErrors(errors)).To(MatchError("first; second"))
-		})
-	})
 
 	Describe("JDBCURI", func() {
 		It("can create JDBC URI", func() {
@@ -30,6 +19,18 @@ var _ = Describe("Broker", func() {
 			operationData, err := makeOperationData("expected_type", "123")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(operationData).To(Equal(`{"recipe_id":"123","type":"expected_type"}`))
+		})
+	})
+	Describe("makeInstanceName", func() {
+		It("can make an instance name", func() {
+			instanceName, err := makeInstanceName("test", "15e332e8-4afa-4c41-82a3-f44b18eba448")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(instanceName).To(Equal("test-15e332e8-4afa-4c41-82a3-f44b18eba448"))
+		})
+		It("can trim spaces from dbprefix", func() {
+			instanceName, err := makeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(instanceName).To(Equal("trim-spaces-0f38f9c2-085c-41ec-87bf-e38b72f7fdaa"))
 		})
 	})
 })

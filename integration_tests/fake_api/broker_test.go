@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
+	"strings"
 
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/compose/fakes"
@@ -57,9 +57,10 @@ var _ = Describe("Broker with fake Compose client", func() {
 	)
 
 	BeforeEach(func() {
+
 		deployment = composeapi.Deployment{
 			ID:         "2",
-			Name:       "3d4548fe-ea5e-4ad8-bd2d-a677c76b8275",
+			Name:       fmt.Sprintf("%s-%s", dbprefix, "3d4548fe-ea5e-4ad8-bd2d-a677c76b8275"),
 			Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
 		}
 
@@ -68,7 +69,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 		fakeComposeClient.Deployments = &[]composeapi.Deployment{
 			{
 				ID:   "1",
-				Name: "bd7a89b4-2a99-4ea2-a369-2ec42230af72",
+				Name: fmt.Sprintf("%s-%s", dbprefix, "bd7a89b4-2a99-4ea2-a369-2ec42230af72"),
 			}, deployment,
 		}
 
@@ -114,8 +115,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:         instanceID,
-				AccountID:    os.Getenv("ACCOUNT_ID"),
+				Name:         fmt.Sprintf("%s-%s", dbprefix, instanceID),
+				AccountID:    "",
 				Datacenter:   broker.ComposeDatacenter,
 				DatabaseType: "mongodb",
 				Units:        1,
@@ -127,7 +128,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 		})
 
-		It("allows user provided parameters", func() {
+		It("ignores user provided parameters", func() {
 			path := "/v2/service_instances/" + instanceID
 			provisionDetailsJson := []byte(fmt.Sprintf(`{
 				  "service_id": "%s",
@@ -145,12 +146,14 @@ var _ = Describe("Broker with fake Compose client", func() {
 			brokerAPI.ServeHTTP(responseRecorder, req)
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:         instanceID,
-				AccountID:    os.Getenv("ACCOUNT_ID"),
+				Name:         fmt.Sprintf("%s-%s", dbprefix, instanceID),
+				AccountID:    "",
 				Datacenter:   broker.ComposeDatacenter,
 				DatabaseType: "mongodb",
 				Units:        1,
 				SSL:          true,
+				WiredTiger:   false,
+				Version:      "",
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
@@ -160,7 +163,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 	})
 
 	It("deprovisions the correct service instance", func() {
-		path := "/v2/service_instances/" + deployment.Name
+		instanceID := strings.TrimPrefix(deployment.Name, dbprefix+"-")
+		path := "/v2/service_instances/" + instanceID
 		req := helper.NewRequest(
 			"DELETE",
 			path,
@@ -180,7 +184,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 	})
 
 	It("can provide a service instance binding", func() {
-		path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", deployment.Name, bindingID)
+		instanceID := strings.TrimPrefix(deployment.Name, dbprefix+"-")
+		path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID)
 		bindingDetailsJson := []byte(fmt.Sprintf(`{
 				"service_id": "%s",
 				"plan_id": "%s",
@@ -230,7 +235,8 @@ var _ = Describe("Broker with fake Compose client", func() {
 	})
 
 	It("will not let you update the plan", func() {
-		path := fmt.Sprintf("/v2/service_instances/%s", deployment.Name)
+		instanceID := strings.TrimPrefix(deployment.Name, dbprefix+"-")
+		path := fmt.Sprintf("/v2/service_instances/%s", instanceID)
 		newPlanID := "Plan-2"
 		provisionDetailsJson := []byte(fmt.Sprintf(`{
 				"service_id": "%s",
