@@ -25,6 +25,12 @@ type Config struct {
 	Username   string
 	Password   string
 	DBPrefix   string
+	Cluster    Cluster
+}
+
+type Cluster struct {
+	Name string
+	ID   string
 }
 
 func New() (*Config, error) {
@@ -64,7 +70,12 @@ func New() (*Config, error) {
 		dbPrefix = "compose-broker"
 	}
 
+	cluster := Cluster{
+		Name: os.Getenv("CLUSTER_NAME"),
+	}
+
 	return &Config{
+		Cluster:    cluster,
 		APIToken:   token,
 		LogLevel:   logLevel,
 		ListenPort: listenPort,

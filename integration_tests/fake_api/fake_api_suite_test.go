@@ -42,8 +42,11 @@ func TestSuite(t *testing.T) {
 		os.Setenv("USERNAME", username)
 		os.Setenv("PASSWORD", password)
 		os.Setenv("DB_PREFIX", dbprefix)
+		os.Setenv("CLUSTER_NAME", "test-cluster")
 
 		newConfig, err = config.New()
+		// we have to just set this here, I dont really like that...
+		newConfig.Cluster.ID = "1"
 		Expect(err).ToNot(HaveOccurred())
 
 		logger = lager.NewLogger("compose-broker")

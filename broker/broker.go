@@ -109,6 +109,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		DatabaseType: service.Name,
 		Units:        plan.Metadata.Units,
 		SSL:          true,
+		ClusterID:    b.Config.Cluster.ID,
 	}
 
 	deployment, errs := b.Compose.CreateDeployment(params)

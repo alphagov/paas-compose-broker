@@ -121,6 +121,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 				DatabaseType: "mongodb",
 				Units:        1,
 				SSL:          true,
+				ClusterID:    "1",
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
@@ -154,6 +155,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 				SSL:          true,
 				WiredTiger:   false,
 				Version:      "",
+				ClusterID:    "1",
 			}
 			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			Expect(responseRecorder.Code).To(Equal(http.StatusAccepted))
