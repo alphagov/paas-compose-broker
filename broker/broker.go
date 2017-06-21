@@ -146,9 +146,9 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		return spec, err
 	}
 
-	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
-		return spec, brokerapi.ErrInstanceDoesNotExist
+	deployment, errs := b.Compose.GetDeploymentByName(instanceName)
+	if errs != nil {
+		return spec, compose.SquashErrors(errs)
 	}
 
 	recipe, errs := b.Compose.DeprovisionDeployment(deployment.ID)
@@ -180,9 +180,9 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		return binding, err
 	}
 
-	deploymentMeta, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
-		return binding, err
+	deploymentMeta, errs := b.Compose.GetDeploymentByName(instanceName)
+	if errs != nil {
+		return binding, compose.SquashErrors(errs)
 	}
 
 	deployment, errs := b.Compose.GetDeployment(deploymentMeta.ID)
@@ -252,9 +252,9 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, err
 	}
 
-	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
-		return spec, err
+	deployment, errs := b.Compose.GetDeploymentByName(instanceName)
+	if errs != nil {
+		return spec, compose.SquashErrors(errs)
 	}
 
 	if details.PlanID != details.PreviousValues.PlanID {

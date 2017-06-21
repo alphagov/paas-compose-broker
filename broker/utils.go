@@ -5,25 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/alphagov/paas-compose-broker/compose"
-	composeapi "github.com/compose/gocomposeapi"
 )
-
-func findDeployment(c compose.Client, name string) (*composeapi.Deployment, error) {
-	deployments, errs := c.GetDeployments()
-	if len(errs) > 0 {
-		return nil, compose.SquashErrors(errs)
-	}
-
-	for _, deployment := range *deployments {
-		if deployment.Name == name {
-			return &deployment, nil
-		}
-	}
-
-	return nil, fmt.Errorf("deployment: not found")
-}
 
 func JDBCURI(scheme, hostname, port, dbname, username, password string) string {
 	return fmt.Sprintf("jdbc:mongodb://%s:%s/%s?user=%s&password=%s", hostname, port, dbname, username, password)

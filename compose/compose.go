@@ -12,6 +12,7 @@ type Client interface {
 	DeprovisionDeployment(string) (*composeapi.Recipe, []error)
 	GetDeployment(string) (*composeapi.Deployment, []error)
 	GetDeployments() (*[]composeapi.Deployment, []error)
+	GetDeploymentByName(string) (*composeapi.Deployment, []error)
 	GetRecipe(string) (*composeapi.Recipe, []error)
 	SetScalings(composeapi.ScalingsParams) (*composeapi.Recipe, []error)
 }
