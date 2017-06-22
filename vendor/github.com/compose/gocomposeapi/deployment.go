@@ -31,19 +31,29 @@ type Deployment struct {
 	ProvisionRecipeID   string            `json:"provision_recipe_id,omitempty"`
 	CACertificateBase64 string            `json:"ca_certificate_base64,omitempty"`
 	Connection          ConnectionStrings `json:"connection_strings,omitempty"`
-	Links               struct {
-		ComposeWebUILink Link `json:"compose_web_ui"`
-	} `json:"_links"`
+	Notes               string            `json:"notes,omitempty"`
+	CustomerBillingCode string            `json:"customer_billing_code,omitempty"`
+	Links               Links             `json:"_links"`
+}
+
+// Links structure, part of the Deployment struct
+type Links struct {
+	ComposeWebUILink Link `json:"compose_web_ui"`
+	ScalingsLink     Link `json:"scalings"`
+	BackupsLink      Link `json:"backups"`
+	AlertsLink       Link `json:"alerts"`
+	ClusterLink      Link `json:"cluster"`
 }
 
 // ConnectionStrings structure, part of the Deployment struct
 type ConnectionStrings struct {
-	Health   string   `json:"health,omitempty"`
-	SSH      string   `json:"ssh,omitempty"`
-	Admin    string   `json:"admin,omitempty"`
-	SSHAdmin string   `json:"ssh_admin,omitempty"`
-	CLI      []string `json:"cli,omitempty"`
-	Direct   []string `json:"direct,omitempty"`
+	Health   string      `json:"health,omitempty"`
+	SSH      string      `json:"ssh,omitempty"`
+	Admin    string      `json:"admin,omitempty"`
+	SSHAdmin string      `json:"ssh_admin,omitempty"`
+	CLI      []string    `json:"cli,omitempty"`
+	Direct   []string    `json:"direct,omitempty"`
+	Misc     interface{} `json:"misc,omitempty"`
 }
 
 // deploymentsResource is used to represent and remove the JSON+HAL Embedded wrapper
@@ -160,6 +170,22 @@ func (c *Client) GetDeployment(deploymentid string) (*Deployment, []error) {
 	json.Unmarshal([]byte(body), &deployment)
 
 	return &deployment, nil
+}
+
+//GetDeploymentByName returns a deployment of a given name
+func (c *Client) GetDeploymentByName(deploymentName string) (*Deployment, []error) {
+	deployments, errs := c.GetDeployments()
+	if errs != nil {
+		return nil, errs
+	}
+
+	for _, deployment := range *deployments {
+		if deployment.Name == deploymentName {
+			return &deployment, nil
+		}
+	}
+
+	return nil, []error{fmt.Errorf("deployment not found: %s", deploymentName)}
 }
 
 //DeprovisionDeploymentJSON performs the call
