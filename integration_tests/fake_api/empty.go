@@ -1,1 +1,1 @@
-package fake_api
+package fakeapi

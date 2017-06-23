@@ -1,4 +1,4 @@
-package real_api_test
+package realapi_test
 
 import (
 	"bytes"

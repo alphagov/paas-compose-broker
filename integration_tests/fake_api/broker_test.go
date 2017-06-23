@@ -1,4 +1,4 @@
-package fake_api_test
+package fakeapi_test
 
 import (
 	"bytes"
