@@ -1,4 +1,4 @@
-package real_api_test
+package realapi_test
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,9 @@ var _ = Describe("Broker with real Compose client", func() {
 
 		composeClient, err = composeapi.NewClient(newConfig.APIToken)
 		Expect(err).NotTo(HaveOccurred())
+		clusters, errs := composeClient.GetClusters()
+		Expect(errs).To(BeNil())
+		newConfig.Cluster.ID = (*clusters)[0].ID
 		serviceBroker, err = broker.New(composeClient, newConfig, &newCatalog, logger)
 		Expect(err).NotTo(HaveOccurred())
 		credentials = brokerapi.BrokerCredentials{
@@ -185,6 +189,19 @@ var _ = Describe("Broker with real Compose client", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Phone).To(Equal(phone))
 			Expect(result.Name).To(Equal(name))
+		})
+		By("checking if instance uses enterprise cluster", func() {
+			deploymentName := fmt.Sprintf("%s-%s", dbprefix, instanceID)
+			deployemnt, errs := composeClient.GetDeploymentByName(deploymentName)
+			Expect(errs).To(BeNil())
+			clusterURL, err := url.Parse(deployemnt.Links.ClusterLink.HREF)
+			Expect(err).ToNot(HaveOccurred())
+			splitPath := strings.Split(strings.TrimRight(clusterURL.Path, "{"), "/")
+			clusterID := splitPath[len(splitPath)-1]
+			cluster, errs := composeClient.GetCluster(clusterID)
+			Expect(errs).To(BeNil())
+			Expect(cluster.Type).To(Equal("private"))
+
 		})
 	})
 })

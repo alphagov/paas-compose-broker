@@ -51,3 +51,4 @@ This is a work-in-progress implementation of a service broker for services provi
 `USERNAME` - broker user name used for basic authentication
 `PASSWORD` - username password
 `DB_PREFIX` - a prefix that can be used to tag instances. Defaults to `compose-broker`
+`CLUSTER_NAME` - a name of your enterprise cluster if you've got one and want to use it. Defaults to hosted compose
