@@ -73,7 +73,7 @@ var _ = Describe("Broker with fake Compose client", func() {
 			}, deployment,
 		}
 
-		serviceBroker, err = broker.New(fakeComposeClient, newConfig, &newCatalog, logger)
+		serviceBroker, err = broker.New(fakeComposeClient, newConfig, newCatalog, logger)
 		Expect(err).NotTo(HaveOccurred())
 		credentials = brokerapi.BrokerCredentials{
 			Username: newConfig.Username,

@@ -66,7 +66,7 @@ var _ = Describe("Broker with real Compose client", func() {
 		clusters, errs := composeClient.GetClusters()
 		Expect(errs).To(BeNil())
 		newConfig.Cluster.ID = (*clusters)[0].ID
-		serviceBroker, err = broker.New(composeClient, newConfig, &newCatalog, logger)
+		serviceBroker, err = broker.New(composeClient, newConfig, newCatalog, logger)
 		Expect(err).NotTo(HaveOccurred())
 		credentials = brokerapi.BrokerCredentials{
 			Username: newConfig.Username,

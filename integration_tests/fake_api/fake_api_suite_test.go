@@ -17,7 +17,7 @@ import (
 
 var (
 	newConfig  *config.Config
-	newCatalog catalog.ComposeCatalog
+	newCatalog *catalog.ComposeCatalog
 	logger     lager.Logger
 	brokerUrl  string
 	username   string
@@ -91,8 +91,7 @@ func TestSuite(t *testing.T) {
 }
 `)
 
-		newCatalog = catalog.ComposeCatalog{}
-		err = newCatalog.Load(catalogData)
+		newCatalog, err = catalog.Load(catalogData)
 		Expect(err).ToNot(HaveOccurred())
 	})
 	RegisterFailHandler(Fail)

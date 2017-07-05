@@ -36,8 +36,7 @@ func main() {
 		logger.Error("opening catalog file", err)
 		os.Exit(1)
 	}
-	newCatalog := catalog.ComposeCatalog{}
-	err = newCatalog.Load(catalogFile)
+	newCatalog, err := catalog.Load(catalogFile)
 	if err != nil {
 		logger.Error("loading catalog", err)
 		os.Exit(1)
@@ -69,7 +68,7 @@ func main() {
 		config.Cluster.ID = cluster.ID
 	}
 
-	brokerInstance, err := broker.New(composeapi, config, &newCatalog, logger)
+	brokerInstance, err := broker.New(composeapi, config, newCatalog, logger)
 
 	if err != nil {
 		logger.Error("could not initialise broker", err)
