@@ -107,7 +107,7 @@ var _ = Describe("Broker integration tests", func() {
 		cfg.Cluster.Name = "test-cluster"
 
 		logger = lager.NewLogger("compose-broker")
-		logger.RegisterSink(lager.NewWriterSink(os.Stdout, cfg.LogLevel))
+		logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, cfg.LogLevel))
 	})
 
 	JustBeforeEach(func() {
