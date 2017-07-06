@@ -16,8 +16,8 @@ type FakeComposeClient struct {
 	GetRecipeStatus         string
 }
 
-func NewFakeClient() (*FakeComposeClient, error) {
-	return &FakeComposeClient{}, nil
+func New() *FakeComposeClient {
+	return &FakeComposeClient{}
 }
 
 func (fcc *FakeComposeClient) CreateDeployment(deploymentParams composeapi.DeploymentParams) (*composeapi.Deployment, []error) {

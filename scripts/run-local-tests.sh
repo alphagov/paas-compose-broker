@@ -1,7 +1,5 @@
 #!/bin/bash
 
-ACCESS_TOKEN=XXX
+export SKIP_COMPOSE_API_TESTS=true
 
-export ACCESS_TOKEN
-
-ginkgo -r -skipPackage=real_api
+ginkgo -r
