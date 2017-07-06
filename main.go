@@ -52,22 +52,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	account, errs := composeapi.GetAccount()
-	if len(errs) > 0 {
-		logger.Error("could not get account id", compose.SquashErrors(errs))
-		os.Exit(1)
-	}
-	config.AccountID = account.ID
-
-	if config.Cluster.Name != "" {
-		cluster, errs := composeapi.GetClusterByName(config.Cluster.Name)
-		if errs != nil {
-			logger.Error("could not get cluster id, check if cluster name is correct", compose.SquashErrors(errs))
-			os.Exit(1)
-		}
-		config.Cluster.ID = cluster.ID
-	}
-
 	brokerInstance, err := broker.New(composeapi, config, newCatalog, logger)
 
 	if err != nil {

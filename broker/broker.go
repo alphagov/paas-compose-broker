@@ -25,13 +25,6 @@ const (
 	operationDataLogKey = "operation-data-recipe-id"
 )
 
-type Broker struct {
-	Compose        compose.Client
-	Config         *config.Config
-	ComposeCatalog *catalog.ComposeCatalog
-	Logger         lager.Logger
-}
-
 type Credentials struct {
 	Host     string `json:"host"`
 	Port     string `json:"port"`
@@ -53,16 +46,36 @@ var composeStatus2State = map[string]brokerapi.LastOperationState{
 	"waiting":  brokerapi.InProgress,
 }
 
-func New(compose compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
-	if compose == nil {
-		return nil, fmt.Errorf("broker: composer should not be nil")
+type Broker struct {
+	Compose        compose.Client
+	Config         *config.Config
+	ComposeCatalog *catalog.ComposeCatalog
+	Logger         lager.Logger
+	AccountID      string
+	ClusterID      string
+}
+
+func New(composeClient compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
+
+	account, errs := composeClient.GetAccount()
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("could not get account ID: %s", compose.SquashErrors(errs))
 	}
 
 	broker := Broker{
-		Compose:        compose,
+		Compose:        composeClient,
 		Config:         config,
 		ComposeCatalog: catalog,
 		Logger:         logger,
+		AccountID:      account.ID,
+	}
+
+	if config.ClusterName != "" {
+		cluster, errs := composeClient.GetClusterByName(config.ClusterName)
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("could not get cluster ID: %s", compose.SquashErrors(errs))
+		}
+		broker.ClusterID = cluster.ID
 	}
 
 	return &broker, nil
@@ -104,12 +117,12 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 
 	params := composeapi.DeploymentParams{
 		Name:         instanceName,
-		AccountID:    b.Config.AccountID,
+		AccountID:    b.AccountID,
 		Datacenter:   ComposeDatacenter,
 		DatabaseType: service.Name,
 		Units:        plan.Metadata.Units,
 		SSL:          true,
-		ClusterID:    b.Config.Cluster.ID,
+		ClusterID:    b.ClusterID,
 	}
 
 	deployment, errs := b.Compose.CreateDeployment(params)

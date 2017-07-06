@@ -8,6 +8,9 @@ import (
 )
 
 type Client interface {
+	GetAccount() (*composeapi.Account, []error)
+	GetClusters() (*[]composeapi.Cluster, []error)
+	GetClusterByName(string) (*composeapi.Cluster, []error)
 	CreateDeployment(composeapi.DeploymentParams) (*composeapi.Deployment, []error)
 	DeprovisionDeployment(string) (*composeapi.Recipe, []error)
 	GetDeployment(string) (*composeapi.Deployment, []error)
@@ -16,7 +19,7 @@ type Client interface {
 	SetScalings(composeapi.ScalingsParams) (*composeapi.Recipe, []error)
 }
 
-func NewClient(apiToken string) (*composeapi.Client, error) {
+func NewClient(apiToken string) (Client, error) {
 	return composeapi.NewClient(apiToken)
 }
 

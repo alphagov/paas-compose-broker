@@ -104,7 +104,6 @@ var _ = Describe("Broker integration tests", func() {
 			Password: randString(10),
 			DBPrefix: "test-suite",
 		}
-		cfg.Cluster.Name = "test-cluster"
 
 		logger = lager.NewLogger("compose-broker")
 		logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, cfg.LogLevel))
@@ -129,8 +128,7 @@ var _ = Describe("Broker integration tests", func() {
 			fakeComposeClient = fakes.New()
 			composeClient = fakeComposeClient
 
-			// we have to just set this here, I dont really like that...
-			cfg.Cluster.ID = "1"
+			fakeComposeClient.Account = composeapi.Account{ID: "1"}
 		})
 
 		It("serves the catalog endpoint", func() {
@@ -176,12 +174,12 @@ var _ = Describe("Broker integration tests", func() {
 
 				expectedDeploymentParams := composeapi.DeploymentParams{
 					Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-					AccountID:    "",
+					AccountID:    "1",
 					Datacenter:   broker.ComposeDatacenter,
 					DatabaseType: "mongodb",
 					Units:        1,
 					SSL:          true,
-					ClusterID:    "1",
+					ClusterID:    "",
 				}
 				Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
 			})
@@ -207,16 +205,53 @@ var _ = Describe("Broker integration tests", func() {
 
 				expectedDeploymentParams := composeapi.DeploymentParams{
 					Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-					AccountID:    "",
+					AccountID:    "1",
 					Datacenter:   broker.ComposeDatacenter,
 					DatabaseType: "mongodb",
 					Units:        1,
 					SSL:          true,
 					WiredTiger:   false,
 					Version:      "",
-					ClusterID:    "1",
+					ClusterID:    "",
 				}
 				Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
+			})
+
+			Context("when configured with a cluster name", func() {
+				BeforeEach(func() {
+					cfg.ClusterName = "test-cluster"
+					fakeComposeClient.Clusters = []composeapi.Cluster{
+						{ID: "1234", Name: "test-cluster"},
+					}
+				})
+
+				It("provisions in the cluster", func() {
+
+					provisionDetailsJson := fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": %s
+				}`, serviceID, planID, "{}")
+					req := helper.NewRequest("PUT", path, strings.NewReader(provisionDetailsJson), cfg.Username, cfg.Password, helper.UriParam{Key: "accepts_incomplete", Value: "true"})
+					resp := doRequest(brokerAPI, req)
+
+					Expect(resp.Code).To(Equal(202))
+					body := helper.ReadResponseBody(resp.Body)
+					Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
+
+					expectedDeploymentParams := composeapi.DeploymentParams{
+						Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+						AccountID:    "1",
+						Datacenter:   broker.ComposeDatacenter,
+						DatabaseType: "mongodb",
+						Units:        1,
+						SSL:          true,
+						ClusterID:    "1234",
+					}
+					Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
+				})
 			})
 		})
 
@@ -477,10 +512,9 @@ var _ = Describe("Broker integration tests", func() {
 
 			instanceID = makeUUID()
 
-			// FIXME Add GetClusters to interface
-			clusters, errs := composeClient.(*composeapi.Client).GetClusters()
+			clusters, errs := composeClient.GetClusters()
 			Expect(errs).To(BeNil())
-			cfg.Cluster.ID = (*clusters)[0].ID
+			cfg.ClusterName = (*clusters)[0].Name
 		})
 
 		AfterEach(func() {

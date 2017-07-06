@@ -19,19 +19,13 @@ var (
 )
 
 type Config struct {
-	APIToken   string
-	AccountID  string
-	LogLevel   lager.LogLevel
-	ListenPort string
-	Username   string
-	Password   string
-	DBPrefix   string
-	Cluster    Cluster
-}
-
-type Cluster struct {
-	Name string
-	ID   string
+	APIToken    string
+	LogLevel    lager.LogLevel
+	ListenPort  string
+	Username    string
+	Password    string
+	DBPrefix    string
+	ClusterName string
 }
 
 func New() (*Config, error) {
@@ -73,7 +67,7 @@ func New() (*Config, error) {
 		return nil, fmt.Errorf("Please export $ACCESS_TOKEN")
 	}
 
-	c.Cluster.Name = os.Getenv("CLUSTER_NAME")
+	c.ClusterName = os.Getenv("CLUSTER_NAME")
 
 	return c, nil
 }

@@ -1,36 +1,86 @@
-package broker
+package broker_test
 
 import (
+	"errors"
+
+	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/alphagov/paas-compose-broker/broker"
+	"github.com/alphagov/paas-compose-broker/catalog"
+	"github.com/alphagov/paas-compose-broker/compose/fakes"
+	"github.com/alphagov/paas-compose-broker/config"
 )
 
 var _ = Describe("Broker", func() {
 
-	Describe("JDBCURI", func() {
-		It("can create JDBC URI", func() {
-			uri := JDBCURI("mongo", "host-a.com", "1111", "admin", "username", "password")
-			Expect(uri).To(Equal("jdbc:mongodb://host-a.com:1111/admin?user=username&password=password"))
-		})
-	})
+	Describe("constructing a broker", func() {
+		var (
+			fakeComposeClient *fakes.FakeComposeClient
+			cfg               *config.Config
+		)
 
-	Describe("makeOperationData", func() {
-		It("can make operation data JSON", func() {
-			operationData, err := makeOperationData("expected_type", "123")
-			Expect(err).ToNot(HaveOccurred())
-			Expect(operationData).To(Equal(`{"recipe_id":"123","type":"expected_type"}`))
+		BeforeEach(func() {
+			fakeComposeClient = fakes.New()
+			cfg = &config.Config{}
 		})
-	})
-	Describe("makeInstanceName", func() {
-		It("can make an instance name", func() {
-			instanceName, err := makeInstanceName("test", "15e332e8-4afa-4c41-82a3-f44b18eba448")
-			Expect(err).ToNot(HaveOccurred())
-			Expect(instanceName).To(Equal("test-15e332e8-4afa-4c41-82a3-f44b18eba448"))
+
+		Describe("looking up the compose Account ID", func() {
+			BeforeEach(func() {
+				fakeComposeClient.Account = composeapi.Account{ID: "1234"}
+			})
+
+			It("looks up the compose account ID", func() {
+				b, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{}, nil)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(b.AccountID).To(Equal("1234"))
+			})
+
+			It("returns an error if looking up the account fails", func() {
+				fakeComposeClient.GlobalError = errors.New("something went wrong")
+				_, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{}, nil)
+				Expect(err).To(HaveOccurred())
+			})
 		})
-		It("can trim spaces from dbprefix", func() {
-			instanceName, err := makeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
-			Expect(err).ToNot(HaveOccurred())
-			Expect(instanceName).To(Equal("trim-spaces-0f38f9c2-085c-41ec-87bf-e38b72f7fdaa"))
+
+		Describe("populating the cluster ID", func() {
+			BeforeEach(func() {
+				fakeComposeClient.Clusters = []composeapi.Cluster{
+					{
+						ID:   "1",
+						Name: "cluster-one",
+					},
+					{
+						ID:   "2",
+						Name: "cluster-two",
+					},
+				}
+			})
+
+			It("leaves the cluster ID blank if no cluster name provided", func() {
+				b, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{}, nil)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(b.ClusterID).To(BeEmpty())
+			})
+
+			It("populates the clusterID using the provided name", func() {
+				cfg.ClusterName = "cluster-two"
+
+				b, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{}, nil)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(b.ClusterID).To(Equal("2"))
+			})
+
+			It("returns an error if the cluster ID can't be looked up", func() {
+				cfg.ClusterName = "non-existent"
+
+				_, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{}, nil)
+				Expect(err).To(HaveOccurred())
+			})
 		})
 	})
 })
