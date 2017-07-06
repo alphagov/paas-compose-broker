@@ -136,7 +136,7 @@ var _ = Describe("Broker integration tests", func() {
 		It("serves the catalog endpoint", func() {
 			req := helper.NewRequest("GET", "/v2/catalog", nil, cfg.Username, cfg.Password)
 			resp := doRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(200))
 
 			var returnedCatalog struct {
 				Services []struct {
@@ -170,7 +170,7 @@ var _ = Describe("Broker integration tests", func() {
 				req := helper.NewRequest("PUT", path, strings.NewReader(provisionDetailsJson), cfg.Username, cfg.Password, helper.UriParam{Key: "accepts_incomplete", Value: "true"})
 				resp := doRequest(brokerAPI, req)
 
-				Expect(resp.Code).To(Equal(http.StatusAccepted))
+				Expect(resp.Code).To(Equal(202))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 
@@ -201,7 +201,7 @@ var _ = Describe("Broker integration tests", func() {
 				req := helper.NewRequest("PUT", path, strings.NewReader(provisionDetailsJson), cfg.Username, cfg.Password, helper.UriParam{Key: "accepts_incomplete", Value: "true"})
 				resp := doRequest(brokerAPI, req)
 
-				Expect(resp.Code).To(Equal(http.StatusAccepted))
+				Expect(resp.Code).To(Equal(202))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
 
@@ -255,7 +255,7 @@ var _ = Describe("Broker integration tests", func() {
 				)
 				resp := doRequest(brokerAPI, req)
 
-				Expect(resp.Code).To(Equal(http.StatusAccepted))
+				Expect(resp.Code).To(Equal(202))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"deprovision-recipe-id\",\"type\":\"deprovision\"}`))
 
@@ -304,7 +304,7 @@ var _ = Describe("Broker integration tests", func() {
 					helper.UriParam{Key: "accepts_incomplete", Value: "true"},
 				)
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+				Expect(resp.Code).To(Equal(500))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring("changing plans is not currently supported"))
 			})
@@ -349,7 +349,7 @@ var _ = Describe("Broker integration tests", func() {
 					cfg.Password,
 				)
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusCreated))
+				Expect(resp.Code).To(Equal(201))
 
 				var data struct {
 					Credentials map[string]string `json:"credentials"`
@@ -382,7 +382,7 @@ var _ = Describe("Broker integration tests", func() {
 					cfg.Password,
 				)
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 			})
 		})
 
@@ -410,7 +410,7 @@ var _ = Describe("Broker integration tests", func() {
 				fakeComposeClient.GetRecipeErr = fmt.Errorf("error: failed to get recipe by ID")
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+				Expect(resp.Code).To(Equal(500))
 				Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring(`{"description":"error: failed to get recipe by ID"}`))
@@ -420,7 +420,7 @@ var _ = Describe("Broker integration tests", func() {
 				fakeComposeClient.GetRecipeStatus = "some-unknown-recipe-status"
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 				Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring("failed"))
@@ -430,7 +430,7 @@ var _ = Describe("Broker integration tests", func() {
 				fakeComposeClient.GetRecipeStatus = "complete"
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 				Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring("succeeded"))
@@ -440,7 +440,7 @@ var _ = Describe("Broker integration tests", func() {
 				fakeComposeClient.GetRecipeStatus = "running"
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 				Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring("in progress"))
@@ -450,7 +450,7 @@ var _ = Describe("Broker integration tests", func() {
 				fakeComposeClient.GetRecipeStatus = "waiting"
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 				Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
 				body := helper.ReadResponseBody(resp.Body)
 				Expect(string(body)).To(ContainSubstring("in progress"))
@@ -514,7 +514,7 @@ var _ = Describe("Broker integration tests", func() {
 				`, serviceID, planID)
 				req := helper.NewRequest("PUT", path, strings.NewReader(provisionDetailsJson), cfg.Username, cfg.Password, helper.UriParam{Key: "accepts_incomplete", Value: "true"})
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusAccepted))
+				Expect(resp.Code).To(Equal(202))
 
 				var provisionResp brokerapi.ProvisioningResponse
 				err := json.NewDecoder(resp.Body).Decode(&provisionResp)
@@ -556,7 +556,7 @@ var _ = Describe("Broker integration tests", func() {
 				)
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusCreated))
+				Expect(resp.Code).To(Equal(201))
 
 				err := json.NewDecoder(resp.Body).Decode(&bindingData)
 				Expect(err).ToNot(HaveOccurred())
@@ -625,7 +625,7 @@ var _ = Describe("Broker integration tests", func() {
 				)
 
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(Equal(http.StatusOK))
+				Expect(resp.Code).To(Equal(200))
 
 				// Response will be an empty JSON object for future compatibility
 				var data map[string]interface{}
@@ -646,7 +646,7 @@ var _ = Describe("Broker integration tests", func() {
 					helper.UriParam{Key: "accepts_incomplete", Value: "true"},
 				)
 				resp := doRequest(brokerAPI, req)
-				Expect(resp.Code).To(BeEquivalentTo(http.StatusAccepted))
+				Expect(resp.Code).To(BeEquivalentTo(202))
 
 				var deprovisionResp brokerapi.DeprovisionResponse
 				err := json.NewDecoder(resp.Body).Decode(&deprovisionResp)
@@ -702,7 +702,7 @@ func pollForOperationCompletion(cfg *config.Config, brokerAPI http.Handler, inst
 				helper.UriParam{Key: "operation", Value: operation},
 			)
 			resp := doRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(200))
 
 			var lastOperation map[string]string
 			err := json.NewDecoder(resp.Body).Decode(&lastOperation)
