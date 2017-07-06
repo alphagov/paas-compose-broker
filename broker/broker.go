@@ -210,7 +210,6 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	if err != nil {
 		return binding, err
 	}
-	password, _ := bindingURL.User.Password()
 
 	// FIXME: Follow up story should fix mongo connection string handling.
 	// Right now we are hardcoding first host from the comma delimited list that Compose provides.
@@ -218,14 +217,18 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
 	port := strings.Split(bindingURL.Port(), ",")
 
+	username := bindingURL.User.Username()
+	password, _ := bindingURL.User.Password()
+	dbName := strings.TrimPrefix(bindingURL.Path, "/")
+
 	binding.Credentials = Credentials{
 		Host:     bindingURL.Hostname(),
 		Port:     port[0],
-		Name:     bindingURL.RequestURI(),
-		Username: bindingURL.User.Username(),
+		Name:     dbName,
+		Username: username,
 		Password: password,
 		URI:      bindingURL.String(),
-		JDBCURI:  JDBCURI(bindingURL.Scheme, bindingURL.Hostname(), port[0], bindingURL.RequestURI(), bindingURL.User.Username(), password),
+		JDBCURI:  JDBCURI(bindingURL.Scheme, bindingURL.Hostname(), port[0], dbName, username, password),
 	}
 
 	return binding, nil
