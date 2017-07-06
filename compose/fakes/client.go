@@ -7,7 +7,7 @@ import (
 )
 
 type FakeComposeClient struct {
-	Deployments             *[]composeapi.Deployment
+	Deployments             []composeapi.Deployment
 	CreateDeploymentParams  composeapi.DeploymentParams
 	DeprovisionDeploymentID string
 	SetScalingsParams       composeapi.ScalingsParams
@@ -31,7 +31,7 @@ func (fcc *FakeComposeClient) DeprovisionDeployment(deploymentID string) (*compo
 }
 
 func (fcc *FakeComposeClient) GetDeployment(deploymentID string) (*composeapi.Deployment, []error) {
-	for _, deployment := range *fcc.Deployments {
+	for _, deployment := range fcc.Deployments {
 		if deployment.ID == deploymentID {
 			return &deployment, nil
 		}
@@ -41,7 +41,7 @@ func (fcc *FakeComposeClient) GetDeployment(deploymentID string) (*composeapi.De
 }
 
 func (fcc *FakeComposeClient) GetDeployments() (*[]composeapi.Deployment, []error) {
-	return fcc.Deployments, []error{}
+	return &fcc.Deployments, []error{}
 }
 
 func (fcc *FakeComposeClient) GetRecipe(recipeID string) (*composeapi.Recipe, []error) {

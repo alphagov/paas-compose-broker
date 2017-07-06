@@ -227,7 +227,7 @@ var _ = Describe("Broker integration tests", func() {
 
 			BeforeEach(func() {
 				instanceID = makeUUID()
-				fakeComposeClient.Deployments = &[]composeapi.Deployment{
+				fakeComposeClient.Deployments = []composeapi.Deployment{
 					{
 						ID:         "1",
 						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
@@ -270,7 +270,7 @@ var _ = Describe("Broker integration tests", func() {
 
 			BeforeEach(func() {
 				instanceID = makeUUID()
-				fakeComposeClient.Deployments = &[]composeapi.Deployment{
+				fakeComposeClient.Deployments = []composeapi.Deployment{
 					{
 						ID:         "1",
 						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
@@ -317,7 +317,7 @@ var _ = Describe("Broker integration tests", func() {
 
 			BeforeEach(func() {
 				instanceID = makeUUID()
-				fakeComposeClient.Deployments = &[]composeapi.Deployment{
+				fakeComposeClient.Deployments = []composeapi.Deployment{
 					{
 						ID:         "1",
 						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
