@@ -7,13 +7,6 @@ import (
 
 var _ = Describe("Broker utility functions", func() {
 
-	Describe("JDBCURI", func() {
-		It("can create JDBC URI", func() {
-			uri := JDBCURI("mongo", "host-a.com", "1111", "admin", "username", "password")
-			Expect(uri).To(Equal("jdbc:mongodb://host-a.com:1111/admin?user=username&password=password"))
-		})
-	})
-
 	Describe("makeOperationData", func() {
 		It("can make operation data JSON", func() {
 			operationData, err := makeOperationData("expected_type", "123")

@@ -397,7 +397,6 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(data.Credentials["username"]).To(Equal("admin"))
 				Expect(data.Credentials["password"]).To(Equal("password"))
 				Expect(data.Credentials["uri"]).To(Equal("mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"))
-				Expect(data.Credentials["jdbcuri"]).To(Equal("jdbc:mongodb://aws-eu-west-1-portal.2.dblayer.com:18899/admin?user=admin&password=password"))
 			})
 		})
 

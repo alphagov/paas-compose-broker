@@ -25,10 +25,6 @@ func findDeployment(c compose.Client, name string) (*composeapi.Deployment, erro
 	return nil, fmt.Errorf("deployment: not found")
 }
 
-func JDBCURI(scheme, hostname, port, dbname, username, password string) string {
-	return fmt.Sprintf("jdbc:mongodb://%s:%s/%s?user=%s&password=%s", hostname, port, dbname, username, password)
-}
-
 func makeOperationData(operationType, recipeID string) (string, error) {
 
 	operationData := OperationData{

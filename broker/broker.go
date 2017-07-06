@@ -32,7 +32,6 @@ type Credentials struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	URI      string `json:"uri"`
-	JDBCURI  string `json:"jdbcuri"`
 }
 
 type OperationData struct {
@@ -228,7 +227,6 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		Username: username,
 		Password: password,
 		URI:      bindingURL.String(),
-		JDBCURI:  JDBCURI(bindingURL.Scheme, bindingURL.Hostname(), port[0], dbName, username, password),
 	}
 
 	return binding, nil
