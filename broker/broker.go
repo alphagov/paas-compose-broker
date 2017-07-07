@@ -160,8 +160,10 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 	}
 
 	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
 		return spec, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
+		return spec, err
 	}
 
 	recipe, errs := b.Compose.DeprovisionDeployment(deployment.ID)
@@ -194,7 +196,9 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	}
 
 	deploymentMeta, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
+		return binding, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
 		return binding, err
 	}
 
@@ -268,7 +272,9 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 	}
 
 	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
+		return spec, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
 		return spec, err
 	}
 

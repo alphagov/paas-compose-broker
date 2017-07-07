@@ -86,6 +86,20 @@ func (fcc *FakeComposeClient) GetDeployment(deploymentID string) (*composeapi.De
 	return nil, []error{fmt.Errorf("deployment: not found")}
 }
 
+func (fcc *FakeComposeClient) GetDeploymentByName(deploymentName string) (*composeapi.Deployment, []error) {
+	if fcc.GlobalError != nil {
+		return nil, []error{fcc.GlobalError}
+	}
+
+	for _, deployment := range fcc.Deployments {
+		if deployment.Name == deploymentName {
+			return &deployment, nil
+		}
+	}
+
+	return nil, []error{fmt.Errorf("deployment not found: %s", deploymentName)}
+}
+
 func (fcc *FakeComposeClient) GetDeployments() (*[]composeapi.Deployment, []error) {
 	if fcc.GlobalError != nil {
 		return nil, []error{fcc.GlobalError}

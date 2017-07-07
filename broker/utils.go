@@ -10,19 +10,18 @@ import (
 	composeapi "github.com/compose/gocomposeapi"
 )
 
+var errDeploymentNotFound = errors.New("Deployment not found")
+
 func findDeployment(c compose.Client, name string) (*composeapi.Deployment, error) {
-	deployments, errs := c.GetDeployments()
+	deployment, errs := c.GetDeploymentByName(name)
 	if len(errs) > 0 {
+		if strings.Contains(errs[0].Error(), "deployment not found") {
+			return nil, errDeploymentNotFound
+		}
 		return nil, compose.SquashErrors(errs)
 	}
 
-	for _, deployment := range *deployments {
-		if deployment.Name == name {
-			return &deployment, nil
-		}
-	}
-
-	return nil, fmt.Errorf("deployment: not found")
+	return deployment, nil
 }
 
 func makeOperationData(operationType, recipeID string) (string, error) {
