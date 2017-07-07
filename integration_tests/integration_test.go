@@ -631,16 +631,14 @@ var _ = Describe("Broker integration tests", func() {
 			})
 
 			By("checking if instance uses enterprise cluster", func() {
-				// FIXME add GetDeploymentByName and GetCluster to interface
-				client := composeClient.(*composeapi.Client)
 				deploymentName := fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID)
-				deployemnt, errs := client.GetDeploymentByName(deploymentName)
+				deployemnt, errs := composeClient.GetDeploymentByName(deploymentName)
 				Expect(errs).To(BeNil())
 				clusterURL, err := url.Parse(deployemnt.Links.ClusterLink.HREF)
 				Expect(err).ToNot(HaveOccurred())
 				splitPath := strings.Split(strings.TrimRight(clusterURL.Path, "{"), "/")
 				clusterID := splitPath[len(splitPath)-1]
-				cluster, errs := client.GetCluster(clusterID)
+				cluster, errs := composeClient.GetCluster(clusterID)
 				Expect(errs).To(BeNil())
 				Expect(cluster.Type).To(Equal("private"))
 			})
