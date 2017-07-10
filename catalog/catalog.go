@@ -58,24 +58,27 @@ func (s *Service) GetPlan(id string) (*ServicePlan, error) {
 	return nil, fmt.Errorf("plan: not found")
 }
 
-func (c *ComposeCatalog) Load(catalog io.Reader) error {
-	buf, err := ioutil.ReadAll(catalog)
+func Load(input io.Reader) (*ComposeCatalog, error) {
+	buf, err := ioutil.ReadAll(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	c := &ComposeCatalog{}
 
 	err = json.Unmarshal(buf, &c.Catalog)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = json.Unmarshal(buf, &c.ComposeUnits)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return c, nil
 }
+
 func (c *ComposeCatalog) Validate() error {
 	return nil
 }

@@ -25,13 +25,6 @@ const (
 	operationDataLogKey = "operation-data-recipe-id"
 )
 
-type Broker struct {
-	Compose        compose.Client
-	Config         *config.Config
-	ComposeCatalog *catalog.ComposeCatalog
-	Logger         lager.Logger
-}
-
 type Credentials struct {
 	Host     string `json:"host"`
 	Port     string `json:"port"`
@@ -39,7 +32,6 @@ type Credentials struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	URI      string `json:"uri"`
-	JDBCURI  string `json:"jdbcuri"`
 }
 
 type OperationData struct {
@@ -53,16 +45,36 @@ var composeStatus2State = map[string]brokerapi.LastOperationState{
 	"waiting":  brokerapi.InProgress,
 }
 
-func New(compose compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
-	if compose == nil {
-		return nil, fmt.Errorf("broker: composer should not be nil")
+type Broker struct {
+	Compose        compose.Client
+	Config         *config.Config
+	ComposeCatalog *catalog.ComposeCatalog
+	Logger         lager.Logger
+	AccountID      string
+	ClusterID      string
+}
+
+func New(composeClient compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
+
+	account, errs := composeClient.GetAccount()
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("could not get account ID: %s", compose.SquashErrors(errs))
 	}
 
 	broker := Broker{
-		Compose:        compose,
+		Compose:        composeClient,
 		Config:         config,
 		ComposeCatalog: catalog,
 		Logger:         logger,
+		AccountID:      account.ID,
+	}
+
+	if config.ClusterName != "" {
+		cluster, errs := composeClient.GetClusterByName(config.ClusterName)
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("could not get cluster ID: %s", compose.SquashErrors(errs))
+		}
+		broker.ClusterID = cluster.ID
 	}
 
 	return &broker, nil
@@ -104,12 +116,12 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 
 	params := composeapi.DeploymentParams{
 		Name:         instanceName,
-		AccountID:    b.Config.AccountID,
+		AccountID:    b.AccountID,
 		Datacenter:   ComposeDatacenter,
 		DatabaseType: service.Name,
 		Units:        plan.Metadata.Units,
 		SSL:          true,
-		ClusterID:    b.Config.Cluster.ID,
+		ClusterID:    b.ClusterID,
 	}
 
 	deployment, errs := b.Compose.CreateDeployment(params)
@@ -148,8 +160,10 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 	}
 
 	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
 		return spec, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
+		return spec, err
 	}
 
 	recipe, errs := b.Compose.DeprovisionDeployment(deployment.ID)
@@ -182,7 +196,9 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	}
 
 	deploymentMeta, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
+		return binding, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
 		return binding, err
 	}
 
@@ -197,7 +213,6 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	if err != nil {
 		return binding, err
 	}
-	password, _ := bindingURL.User.Password()
 
 	// FIXME: Follow up story should fix mongo connection string handling.
 	// Right now we are hardcoding first host from the comma delimited list that Compose provides.
@@ -205,14 +220,17 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
 	port := strings.Split(bindingURL.Port(), ",")
 
+	username := bindingURL.User.Username()
+	password, _ := bindingURL.User.Password()
+	dbName := strings.TrimPrefix(bindingURL.Path, "/")
+
 	binding.Credentials = Credentials{
 		Host:     bindingURL.Hostname(),
 		Port:     port[0],
-		Name:     bindingURL.RequestURI(),
-		Username: bindingURL.User.Username(),
+		Name:     dbName,
+		Username: username,
 		Password: password,
 		URI:      bindingURL.String(),
-		JDBCURI:  JDBCURI(bindingURL.Scheme, bindingURL.Hostname(), port[0], bindingURL.RequestURI(), bindingURL.User.Username(), password),
 	}
 
 	return binding, nil
@@ -254,7 +272,9 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 	}
 
 	deployment, err := findDeployment(b.Compose, instanceName)
-	if err != nil {
+	if err == errDeploymentNotFound {
+		return spec, brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
 		return spec, err
 	}
 

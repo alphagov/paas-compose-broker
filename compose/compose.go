@@ -8,15 +8,20 @@ import (
 )
 
 type Client interface {
+	GetAccount() (*composeapi.Account, []error)
+	GetClusters() (*[]composeapi.Cluster, []error)
+	GetCluster(string) (*composeapi.Cluster, []error)
+	GetClusterByName(string) (*composeapi.Cluster, []error)
 	CreateDeployment(composeapi.DeploymentParams) (*composeapi.Deployment, []error)
 	DeprovisionDeployment(string) (*composeapi.Recipe, []error)
 	GetDeployment(string) (*composeapi.Deployment, []error)
+	GetDeploymentByName(string) (*composeapi.Deployment, []error)
 	GetDeployments() (*[]composeapi.Deployment, []error)
 	GetRecipe(string) (*composeapi.Recipe, []error)
 	SetScalings(composeapi.ScalingsParams) (*composeapi.Recipe, []error)
 }
 
-func NewClient(apiToken string) (*composeapi.Client, error) {
+func NewClient(apiToken string) (Client, error) {
 	return composeapi.NewClient(apiToken)
 }
 
