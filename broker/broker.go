@@ -26,12 +26,13 @@ const (
 )
 
 type Credentials struct {
-	Host     string `json:"host"`
-	Port     string `json:"port"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	URI      string `json:"uri"`
+	Host                string `json:"host"`
+	Port                string `json:"port"`
+	Name                string `json:"name"`
+	Username            string `json:"username"`
+	Password            string `json:"password"`
+	URI                 string `json:"uri"`
+	CACertificateBase64 string `json:"ca_certificate_base64"`
 }
 
 type OperationData struct {
@@ -225,12 +226,13 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	dbName := strings.TrimPrefix(bindingURL.Path, "/")
 
 	binding.Credentials = Credentials{
-		Host:     bindingURL.Hostname(),
-		Port:     port[0],
-		Name:     dbName,
-		Username: username,
-		Password: password,
-		URI:      bindingURL.String(),
+		Host:                bindingURL.Hostname(),
+		Port:                port[0],
+		Name:                dbName,
+		Username:            username,
+		Password:            password,
+		URI:                 bindingURL.String(),
+		CACertificateBase64: deployment.CACertificateBase64,
 	}
 
 	return binding, nil
