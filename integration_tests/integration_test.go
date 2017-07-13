@@ -2,6 +2,8 @@ package integration_test
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -354,9 +356,10 @@ var _ = Describe("Broker integration tests", func() {
 				instanceID = makeUUID()
 				fakeComposeClient.Deployments = []composeapi.Deployment{
 					{
-						ID:         "1",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
+						ID:                  "1",
+						Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+						Connection:          composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
+						CACertificateBase64: "AAAA",
 					},
 					{
 						ID:         "2",
@@ -397,6 +400,7 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(data.Credentials["username"]).To(Equal("admin"))
 				Expect(data.Credentials["password"]).To(Equal("password"))
 				Expect(data.Credentials["uri"]).To(Equal("mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"))
+				Expect(data.Credentials["ca_certificate_base64"]).To(Equal("AAAA"))
 			})
 		})
 
@@ -601,10 +605,16 @@ var _ = Describe("Broker integration tests", func() {
 				mongourl, err := mgo.ParseURL(uri)
 				Expect(err).ToNot(HaveOccurred())
 
-				// Compose has self-signed certs for mongo nd we dont pass ca_certificate_base64 in the binding
-				tlsConfig := &tls.Config{
-					InsecureSkipVerify: true,
-				}
+				// Compose has self-signed certs for mongo. Make sure we verify it against CA certificate brovided in binding
+				caBase64 := bindingData.Credentials["ca_certificate_base64"]
+				ca, err := base64.StdEncoding.DecodeString(caBase64)
+				Expect(err).ToNot(HaveOccurred())
+				roots := x509.NewCertPool()
+				roots.AppendCertsFromPEM(ca)
+
+				tlsConfig := &tls.Config{RootCAs: roots}
+				Expect(tlsConfig.InsecureSkipVerify).To(BeFalse())
+
 				mongourl.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
 					return tls.Dial("tcp", addr.String(), tlsConfig)
 				}
