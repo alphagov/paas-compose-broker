@@ -1,0 +1,23 @@
+---
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: golang
+    tag: 1.8-alpine
+inputs:
+  - name: repo
+  - name: secrets
+run:
+  path: sh
+  args:
+    - -e
+    - -c
+    - |
+      export COMPOSE_API_KEY=$(awk -F':' '$1 ~ /compose_access_token/ {print $2}' ./secrets/compose-broker-secrets.yml)
+      mkdir -p "${GOPATH}/src/github.com/alphagov/paas-compose-broker"
+      cp -r  repo/* "${GOPATH}/src/github.com/alphagov/paas-compose-broker/"
+      cd "${GOPATH}/src/github.com/alphagov/paas-compose-broker"
+      apk update && apk add git
+      go get github.com/onsi/ginkgo/ginkgo
+      ./scripts/run-all-tests.sh
