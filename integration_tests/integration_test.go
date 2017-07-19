@@ -642,31 +642,16 @@ var _ = Describe("Broker integration tests", func() {
 
 			By("checking if instance uses enterprise cluster", func() {
 				deploymentName := fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID)
-				deployemnt, errs := composeClient.GetDeploymentByName(deploymentName)
+				deployment, errs := composeClient.GetDeploymentByName(deploymentName)
 				Expect(errs).To(BeNil())
-				clusterURL, err := url.Parse(deployemnt.Links.ClusterLink.HREF)
+				clusterURL, err := url.Parse(deployment.Links.ClusterLink.HREF)
 				Expect(err).ToNot(HaveOccurred())
 				splitPath := strings.Split(strings.TrimRight(clusterURL.Path, "{"), "/")
 				clusterID := splitPath[len(splitPath)-1]
-				// Workaround for compose API issue with "Provisior" role.
-				// This should use composeClient.GetCluster(id) however the /cluster/<id> API
-				// currently fails for users with only a "Provisioner" role, while the /clusters API
-				// works ok.
-				// Ticket: https://app.compose.io/gds/support/tickets/399870368
-				cluster, errs := (func(id string) (*composeapi.Cluster, []error) {
-					clusters, errs := composeClient.GetClusters()
-					if errs != nil {
-						return nil, errs
-					}
-					for _, cluster := range *clusters {
-						if cluster.ID == id {
-							return &cluster, nil
-						}
-					}
-					return nil, []error{fmt.Errorf("cluster not found: %s", id)}
-				})(clusterID)
+				expectedCluster, errs := composeClient.GetClusterByName(cfg.ClusterName)
 				Expect(errs).To(BeNil())
-				Expect(cluster.Type).To(Equal("private"))
+				Expect(clusterID).To(Equal(expectedCluster.ID))
+				Expect(expectedCluster.Type).To(Equal("private"))
 			})
 
 			By("unbinding from the service", func() {
