@@ -38,20 +38,6 @@ func (fcc *FakeComposeClient) GetClusters() (*[]composeapi.Cluster, []error) {
 	return &fcc.Clusters, nil
 }
 
-func (fcc *FakeComposeClient) GetCluster(clusterID string) (*composeapi.Cluster, []error) {
-	if fcc.GlobalError != nil {
-		return nil, []error{fcc.GlobalError}
-	}
-
-	for _, c := range fcc.Clusters {
-		if c.ID == clusterID {
-			return &c, nil
-		}
-	}
-
-	return nil, []error{fmt.Errorf("cluster: not found")}
-}
-
 func (fcc *FakeComposeClient) GetClusterByName(clusterName string) (*composeapi.Cluster, []error) {
 	if fcc.GlobalError != nil {
 		return nil, []error{fcc.GlobalError}
