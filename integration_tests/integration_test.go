@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-cf/brokerapi"
 	uuid "github.com/satori/go.uuid"
+	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/alphagov/paas-compose-broker/broker"
@@ -90,10 +91,11 @@ var _ = BeforeSuite(func() {
 
 var _ = Describe("Broker integration tests", func() {
 	var (
-		cfg           *config.Config
-		logger        lager.Logger
-		brokerAPI     http.Handler
-		composeClient compose.Client
+		cfg            *config.Config
+		logger         lager.Logger
+		brokerInstance *broker.Broker
+		brokerAPI      http.Handler
+		composeClient  compose.Client
 	)
 	BeforeEach(func() {
 		cfg = &config.Config{
@@ -107,10 +109,11 @@ var _ = Describe("Broker integration tests", func() {
 	})
 
 	JustBeforeEach(func() {
-		b, err := broker.New(composeClient, cfg, newCatalog, logger)
+		var err error
+		brokerInstance, err = broker.New(composeClient, cfg, newCatalog, logger)
 		Expect(err).NotTo(HaveOccurred())
 
-		brokerAPI = brokerapi.New(b, logger, brokerapi.BrokerCredentials{
+		brokerAPI = brokerapi.New(brokerInstance, logger, brokerapi.BrokerCredentials{
 			Username: cfg.Username,
 			Password: cfg.Password,
 		})
@@ -118,7 +121,11 @@ var _ = Describe("Broker integration tests", func() {
 
 	Context("Using a mocked Compose API", func() {
 		var (
-			fakeComposeClient *fakes.FakeComposeClient
+			fakeComposeClient    *fakes.FakeComposeClient
+			instanceID           string
+			localMongoDBHostname string
+			localMongoDBPort     string
+			localMongoDBUrl      string
 		)
 
 		BeforeEach(func() {
@@ -126,6 +133,29 @@ var _ = Describe("Broker integration tests", func() {
 			composeClient = fakeComposeClient
 
 			fakeComposeClient.Account = composeapi.Account{ID: "1"}
+
+			localMongoDBHostname = "localhost"
+			localMongoDBPort = "27017"
+			localMongoDBUrl = fmt.Sprintf("mongodb://%s:%s", localMongoDBHostname, localMongoDBPort)
+
+			instanceID = makeUUID()
+			fakeComposeClient.Deployments = []composeapi.Deployment{
+				{
+					ID:                  "1",
+					Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+					Connection:          composeapi.ConnectionStrings{Direct: []string{localMongoDBUrl}},
+					CACertificateBase64: "AAAA",
+				},
+				{
+					ID:         "2",
+					Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, makeUUID()),
+					Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.3.dblayer.com:18899,aws-eu-west-1-portal.8.dblayer.com:18899/admin?ssl=true"}},
+				},
+			}
+		})
+
+		JustBeforeEach(func() {
+			brokerInstance.RequireTLS = false
 		})
 
 		It("serves the catalog endpoint", func() {
@@ -253,26 +283,6 @@ var _ = Describe("Broker integration tests", func() {
 		})
 
 		Describe("deprovisioning an instance", func() {
-			var (
-				instanceID string
-			)
-
-			BeforeEach(func() {
-				instanceID = makeUUID()
-				fakeComposeClient.Deployments = []composeapi.Deployment{
-					{
-						ID:         "1",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
-					},
-					{
-						ID:         "2",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, makeUUID()),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.3.dblayer.com:18899,aws-eu-west-1-portal.8.dblayer.com:18899/admin?ssl=true"}},
-					},
-				}
-			})
-
 			It("deprovisions the correct instance", func() {
 				path := "/v2/service_instances/" + instanceID
 				req := helper.NewRequest(
@@ -296,26 +306,6 @@ var _ = Describe("Broker integration tests", func() {
 		})
 
 		Describe("updating a service", func() {
-			var (
-				instanceID string
-			)
-
-			BeforeEach(func() {
-				instanceID = makeUUID()
-				fakeComposeClient.Deployments = []composeapi.Deployment{
-					{
-						ID:         "1",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
-					},
-					{
-						ID:         "2",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, makeUUID()),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.3.dblayer.com:18899,aws-eu-west-1-portal.8.dblayer.com:18899/admin?ssl=true"}},
-					},
-				}
-			})
-
 			It("does not allow updating the plan", func() {
 				path := fmt.Sprintf("/v2/service_instances/%s", instanceID)
 				newPlanID := "Plan-2"
@@ -343,44 +333,9 @@ var _ = Describe("Broker integration tests", func() {
 		})
 
 		Describe("binding to a service", func() {
-			var (
-				instanceID string
-			)
-
-			BeforeEach(func() {
-				instanceID = makeUUID()
-				fakeComposeClient.Deployments = []composeapi.Deployment{
-					{
-						ID:                  "1",
-						Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-						Connection:          composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"}},
-						CACertificateBase64: "AAAA",
-					},
-					{
-						ID:         "2",
-						Name:       fmt.Sprintf("%s-%s", cfg.DBPrefix, makeUUID()),
-						Connection: composeapi.ConnectionStrings{Direct: []string{"mongodb://admin:password@aws-eu-west-1-portal.3.dblayer.com:18899,aws-eu-west-1-portal.8.dblayer.com:18899/admin?ssl=true"}},
-					},
-				}
-			})
-
 			It("returns binding information", func() {
-				path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, makeUUID())
-				bindingDetailsJson := fmt.Sprintf(`{
-					"service_id": "%s",
-					"plan_id": "%s",
-					"bind_resource": {
-						"app_guid": "%s"
-					},
-					"parameters": "{}"
-				}`, serviceID, planID, makeUUID())
-				req := helper.NewRequest(
-					"PUT",
-					path,
-					strings.NewReader(bindingDetailsJson),
-					cfg.Username,
-					cfg.Password,
-				)
+				bindingID := makeUUID()
+				req := bindRequest(instanceID, bindingID, serviceID, planID, makeUUID(), cfg)
 				resp := doRequest(brokerAPI, req)
 				Expect(resp.Code).To(Equal(201))
 
@@ -389,32 +344,24 @@ var _ = Describe("Broker integration tests", func() {
 				}
 				err := json.NewDecoder(resp.Body).Decode(&data)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(data.Credentials["host"]).To(Equal("aws-eu-west-1-portal.2.dblayer.com"))
-				Expect(data.Credentials["port"]).To(Equal("18899"))
-				Expect(data.Credentials["name"]).To(Equal("admin"))
-				Expect(data.Credentials["username"]).To(Equal("admin"))
-				Expect(data.Credentials["password"]).To(Equal("password"))
-				Expect(data.Credentials["uri"]).To(Equal("mongodb://admin:password@aws-eu-west-1-portal.2.dblayer.com:18899,aws-eu-west-1-portal.7.dblayer.com:18899/admin?ssl=true"))
+
+				Expect(data.Credentials["host"]).To(Equal(localMongoDBHostname))
+				Expect(data.Credentials["port"]).To(Equal(localMongoDBPort))
+				Expect(data.Credentials["name"]).To(Equal("db_" + instanceID))
+				Expect(data.Credentials["username"]).To(Equal("user_" + bindingID))
 				Expect(data.Credentials["ca_certificate_base64"]).To(Equal("AAAA"))
 			})
 		})
 
 		Describe("unbinding from a service", func() {
-
 			It("allows unbinding a service", func() {
-				path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", makeUUID(), makeUUID())
-				unbindingDetailsJson := fmt.Sprintf(`{
-					"service_id": "%s",
-					"plan_id": "%s",
-				}`, serviceID, planID)
-				req := helper.NewRequest(
-					"DELETE",
-					path,
-					strings.NewReader(unbindingDetailsJson),
-					cfg.Username,
-					cfg.Password,
-				)
+				bindingID := makeUUID()
+				req := bindRequest(instanceID, bindingID, serviceID, planID, makeUUID(), cfg)
 				resp := doRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(201))
+
+				req = unbindRequest(instanceID, bindingID, serviceID, planID, cfg)
+				resp = doRequest(brokerAPI, req)
 				Expect(resp.Code).To(Equal(200))
 			})
 		})
@@ -576,15 +523,18 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 
-			By("connecting to the instance", func() {
-				session, err := helper.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"])
+			By("generating a non-admin user", func() {
+				Expect(bindingData.Credentials["username"]).ToNot(Equal("admin"))
+			})
+
+			By("using a non-admin database", func() {
+				Expect(bindingData.Credentials["name"]).ToNot(Equal("admin"))
+			})
+
+			By("connecting and read-writing to the instance", func() {
+				session, err := broker.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
 				Expect(err).ToNot(HaveOccurred())
 				defer session.Close()
-
-				type Person struct {
-					Name  string
-					Phone string
-				}
 
 				input := &Person{Name: "John Jones", Phone: "+447777777777"}
 				people := session.DB(rebindingData.Credentials["name"]).C("people")
@@ -596,6 +546,77 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Name).To(Equal(input.Name))
 				Expect(result.Phone).To(Equal(input.Phone))
+			})
+
+			By("being unable to access the admin database", func() {
+				session, err := broker.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
+				Expect(err).ToNot(HaveOccurred())
+				defer session.Close()
+
+				db := session.DB("admin")
+				// Check we can't list the collections in the `admin` database.
+				_, err = db.CollectionNames()
+				Expect(err).To(HaveOccurred())
+				Expect(err.(*mgo.QueryError).Code).To(Equal(13))
+				Expect(err.(*mgo.QueryError).Message).To(ContainSubstring("not authorized"))
+
+				// Check we can't write to the `admin` database.
+				input := &Person{Name: "Major Kong", Phone: "+1166666666666"}
+				bad_people := db.C("bad_people")
+				err = bad_people.Insert(input)
+				Expect(err).To(HaveOccurred())
+				Expect(err.(*mgo.QueryError).Code).To(Equal(13))
+				Expect(err.(*mgo.QueryError).Message).To(ContainSubstring("not authorized"))
+			})
+
+			By("being unable to modify user permissions", func() {
+				session, err := broker.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
+				Expect(err).ToNot(HaveOccurred())
+				defer session.Close()
+
+				db := session.DB(rebindingData.Credentials["name"])
+				// Ensure we can't make ourselves a global admin.
+				err = db.UpsertUser(&mgo.User{
+					Username: rebindingData.Credentials["username"],
+					Password: rebindingData.Credentials["password"],
+					Roles:    []mgo.Role{mgo.RoleDBAdminAny},
+				})
+				Expect(err).To(HaveOccurred())
+			})
+
+			By("being unable to create users", func() {
+				session, err := broker.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
+				Expect(err).ToNot(HaveOccurred())
+				defer session.Close()
+
+				db := session.DB(rebindingData.Credentials["name"])
+
+				roles_to_try := []mgo.Role{mgo.RoleReadWrite, mgo.RoleDBAdmin, mgo.RoleReadWriteAny, mgo.RoleDBAdminAny}
+				for _, role_to_try := range roles_to_try {
+					err = db.UpsertUser(&mgo.User{
+						Username: "new_user_they_should_not_be_able_to_create_" + string(role_to_try),
+						Password: "zoomzoom" + string(role_to_try),
+						Roles:    []mgo.Role{role_to_try},
+					})
+					Expect(err).To(HaveOccurred())
+					Expect(err.(*mgo.QueryError).Code).To(Equal(13))
+					Expect(err.(*mgo.QueryError).Message).To(ContainSubstring("not authorized"))
+				}
+			})
+
+			By("being unable to create databases", func() {
+				session, err := broker.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
+				Expect(err).ToNot(HaveOccurred())
+				defer session.Close()
+
+				// Ensure we can't insert data to another database.
+				db := session.DB("a_new_db_they_should_not_be_able_to_use")
+				input := &Person{Name: "Major Kong", Phone: "+1166666666666"}
+				bad_people := db.C("bad_people")
+				err = bad_people.Insert(input)
+				Expect(err).To(HaveOccurred())
+				Expect(err.(*mgo.QueryError).Code).To(Equal(13))
+				Expect(err.(*mgo.QueryError).Message).To(ContainSubstring("not authorized"))
 			})
 
 			By("checking if instance uses enterprise cluster", func() {
@@ -632,15 +653,15 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 
+			By("providing a new password upon rebind", func() {
+				Expect(rebindingData.Credentials["username"]).To(Equal(bindingData.Credentials["username"]))
+				Expect(rebindingData.Credentials["password"]).ToNot(Equal(bindingData.Credentials["password"]))
+			})
+
 			By("using the new credentials to alter existing objects", func() {
-				session, err := helper.MongoConnection(rebindingData.Credentials["uri"], rebindingData.Credentials["ca_certificate_base64"])
+				session, err := broker.MongoConnection(rebindingData.Credentials["uri"], rebindingData.Credentials["ca_certificate_base64"], brokerInstance.RequireTLS)
 				Expect(err).ToNot(HaveOccurred())
 				defer session.Close()
-
-				type Person struct {
-					Name  string
-					Phone string
-				}
 
 				people := session.DB(rebindingData.Credentials["name"]).C("people")
 				var result Person
@@ -709,6 +730,11 @@ var _ = Describe("Broker integration tests", func() {
 		})
 	})
 })
+
+type Person struct {
+	Name  string
+	Phone string
+}
 
 func doRequest(server http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()

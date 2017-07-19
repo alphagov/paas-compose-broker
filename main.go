@@ -53,10 +53,16 @@ func main() {
 	}
 
 	brokerInstance, err := broker.New(composeapi, config, newCatalog, logger)
-
 	if err != nil {
 		logger.Error("could not initialise broker", err)
 		os.Exit(1)
+	}
+
+	// The RequireTLS flag exists such that local tests can use insecure database
+	// connections. In production it must always be set to true to forbid such
+	// insecure connections.
+	if !brokerInstance.RequireTLS {
+		panic("The broker must be configured to refuse non-TLS connections.")
 	}
 
 	credentials := brokerapi.BrokerCredentials{

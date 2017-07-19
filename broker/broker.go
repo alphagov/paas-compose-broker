@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 
+	mgo "gopkg.in/mgo.v2"
+
 	"code.cloudfoundry.org/lager"
 
 	"github.com/alphagov/paas-compose-broker/catalog"
@@ -23,6 +25,7 @@ const (
 	detailsLogKey       = "details"
 	asyncAllowedLogKey  = "acceptsIncomplete"
 	operationDataLogKey = "operation-data-recipe-id"
+	passwordLength      = 32
 )
 
 type Credentials struct {
@@ -53,6 +56,7 @@ type Broker struct {
 	Logger         lager.Logger
 	AccountID      string
 	ClusterID      string
+	RequireTLS     bool
 }
 
 func New(composeClient compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
@@ -68,6 +72,7 @@ func New(composeClient compose.Client, config *config.Config, catalog *catalog.C
 		ComposeCatalog: catalog,
 		Logger:         logger,
 		AccountID:      account.ID,
+		RequireTLS:     true,
 	}
 
 	if config.ClusterName != "" {
@@ -210,20 +215,39 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 	if deployment.Connection.Direct == nil || len(deployment.Connection.Direct) < 1 {
 		return binding, fmt.Errorf("failed to get connection string")
 	}
+
+	dbName := makeDatabaseName(instanceID)
+	username := makeUserName(bindingID)
+	password, err := makeRandomPassword(passwordLength)
+	if err != nil {
+		return binding, err
+	}
+
+	session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64, b.RequireTLS)
+	if err != nil {
+		return binding, err
+	}
+	err = session.DB(dbName).UpsertUser(&mgo.User{
+		Username: username,
+		Password: password,
+		Roles:    []mgo.Role{mgo.RoleReadWrite},
+	})
+	if err != nil {
+		return binding, err
+	}
+
 	bindingURL, err := url.Parse(deployment.Connection.Direct[0])
 	if err != nil {
 		return binding, err
 	}
+	bindingURL.User = url.UserPassword(username, password)
+	bindingURL.Path = fmt.Sprintf("/%s", dbName)
 
 	// FIXME: Follow up story should fix mongo connection string handling.
 	// Right now we are hardcoding first host from the comma delimited list that Compose provides.
 	// url.Parse() parses mongo connection string wrongly and doesn't return an error
 	// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
 	port := strings.Split(bindingURL.Port(), ",")
-
-	username := bindingURL.User.Username()
-	password, _ := bindingURL.User.Password()
-	dbName := strings.TrimPrefix(bindingURL.Path, "/")
 
 	binding.Credentials = Credentials{
 		Host:                bindingURL.Hostname(),
@@ -245,7 +269,32 @@ func (b *Broker) Unbind(context context.Context, instanceID, bindingID string, d
 		detailsLogKey:    details,
 	})
 
-	return nil
+	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	if err != nil {
+		return err
+	}
+
+	deploymentMeta, err := findDeployment(b.Compose, instanceName)
+	if err == errDeploymentNotFound {
+		return brokerapi.ErrInstanceDoesNotExist
+	} else if err != nil {
+		return err
+	}
+
+	deployment, errs := b.Compose.GetDeployment(deploymentMeta.ID)
+	if len(errs) > 0 {
+		return compose.SquashErrors(errs)
+	}
+	if deployment.Connection.Direct == nil || len(deployment.Connection.Direct) < 1 {
+		return fmt.Errorf("failed to get connection string")
+	}
+
+	session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64, b.RequireTLS)
+	if err != nil {
+		return err
+	}
+
+	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
 }
 
 func (b *Broker) Update(context context.Context, instanceID string, details brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.UpdateServiceSpec, error) {
