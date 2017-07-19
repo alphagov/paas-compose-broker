@@ -648,7 +648,23 @@ var _ = Describe("Broker integration tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				splitPath := strings.Split(strings.TrimRight(clusterURL.Path, "{"), "/")
 				clusterID := splitPath[len(splitPath)-1]
-				cluster, errs := composeClient.GetCluster(clusterID)
+				// Workaround for compose API issue with "Provisior" role.
+				// This should use composeClient.GetCluster(id) however the /cluster/<id> API
+				// currently fails for users with only a "Provisioner" role, while the /clusters API
+				// works ok.
+				// Ticket: https://app.compose.io/gds/support/tickets/399870368
+				cluster, errs := (func(id string) (*composeapi.Cluster, []error) {
+					clusters, errs := composeClient.GetClusters()
+					if errs != nil {
+						return nil, errs
+					}
+					for _, cluster := range *clusters {
+						if cluster.ID == id {
+							return &cluster, nil
+						}
+					}
+					return nil, []error{fmt.Errorf("cluster not found: %s", id)}
+				})(clusterID)
 				Expect(errs).To(BeNil())
 				Expect(cluster.Type).To(Equal("private"))
 			})
