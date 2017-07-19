@@ -1,13 +1,9 @@
 package integration_test
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,7 +18,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-cf/brokerapi"
 	uuid "github.com/satori/go.uuid"
-	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/alphagov/paas-compose-broker/broker"
@@ -569,29 +564,11 @@ var _ = Describe("Broker integration tests", func() {
 			var bindingData struct {
 				Credentials map[string]string `json:"credentials"`
 			}
+			var rebindingData struct {
+				Credentials map[string]string `json:"credentials"`
+			}
 			By("binding to an instance", func() {
-				path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID)
-				bindingDetailsJson := fmt.Sprintf(`
-					{
-						"service_id": "%s",
-						"plan_id": "%s",
-						"bind_resource": {
-							"app_guid": "%s"
-						},
-						"parameters": "{}"
-					}`,
-					serviceID,
-					planID,
-					appGUID,
-				)
-				req := helper.NewRequest(
-					"PUT",
-					path,
-					strings.NewReader(bindingDetailsJson),
-					cfg.Username,
-					cfg.Password,
-				)
-
+				req := bindRequest(instanceID, bindingID, serviceID, planID, appGUID, cfg)
 				resp := doRequest(brokerAPI, req)
 				Expect(resp.Code).To(Equal(201))
 
@@ -600,26 +577,7 @@ var _ = Describe("Broker integration tests", func() {
 			})
 
 			By("connecting to the instance", func() {
-				// This is work around for https://github.com/go-mgo/mgo/issues/84
-				uri := strings.TrimSuffix(bindingData.Credentials["uri"], "?ssl=true")
-				mongourl, err := mgo.ParseURL(uri)
-				Expect(err).ToNot(HaveOccurred())
-
-				// Compose has self-signed certs for mongo. Make sure we verify it against CA certificate brovided in binding
-				caBase64 := bindingData.Credentials["ca_certificate_base64"]
-				ca, err := base64.StdEncoding.DecodeString(caBase64)
-				Expect(err).ToNot(HaveOccurred())
-				roots := x509.NewCertPool()
-				roots.AppendCertsFromPEM(ca)
-
-				tlsConfig := &tls.Config{RootCAs: roots}
-				Expect(tlsConfig.InsecureSkipVerify).To(BeFalse())
-
-				mongourl.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
-					return tls.Dial("tcp", addr.String(), tlsConfig)
-				}
-				mongourl.Timeout = 10 * time.Second
-				session, err := mgo.DialWithInfo(mongourl)
+				session, err := helper.MongoConnection(bindingData.Credentials["uri"], bindingData.Credentials["ca_certificate_base64"])
 				Expect(err).ToNot(HaveOccurred())
 				defer session.Close()
 
@@ -629,12 +587,12 @@ var _ = Describe("Broker integration tests", func() {
 				}
 
 				input := &Person{Name: "John Jones", Phone: "+447777777777"}
-				db := session.DB("test").C("people")
-				err = db.Insert(input)
+				people := session.DB(rebindingData.Credentials["name"]).C("people")
+				err = people.Insert(input)
 				Expect(err).ToNot(HaveOccurred())
 
 				var result Person
-				err = db.Find(bson.M{"name": "John Jones"}).One(&result)
+				err = people.Find(bson.M{"name": "John Jones"}).One(&result)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Name).To(Equal(input.Name))
 				Expect(result.Phone).To(Equal(input.Phone))
@@ -655,17 +613,65 @@ var _ = Describe("Broker integration tests", func() {
 			})
 
 			By("unbinding from the service", func() {
-				path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID)
-				req := helper.NewRequest(
-					"DELETE",
-					path,
-					nil,
-					cfg.Username,
-					cfg.Password,
-					helper.UriParam{Key: "service_id", Value: serviceID},
-					helper.UriParam{Key: "plan_id", Value: planID},
-				)
+				req := unbindRequest(instanceID, bindingID, serviceID, planID, cfg)
+				resp := doRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
 
+				// Response will be an empty JSON object for future compatibility
+				var data map[string]interface{}
+				err := json.NewDecoder(resp.Body).Decode(&data)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			By("rebinding to the service", func() {
+				req := bindRequest(instanceID, bindingID, serviceID, planID, appGUID, cfg)
+				resp := doRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(201))
+
+				err := json.NewDecoder(resp.Body).Decode(&rebindingData)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			By("using the new credentials to alter existing objects", func() {
+				session, err := helper.MongoConnection(rebindingData.Credentials["uri"], rebindingData.Credentials["ca_certificate_base64"])
+				Expect(err).ToNot(HaveOccurred())
+				defer session.Close()
+
+				type Person struct {
+					Name  string
+					Phone string
+				}
+
+				people := session.DB(rebindingData.Credentials["name"]).C("people")
+				var result Person
+
+				// Read the person inserted previously.
+				err = people.Find(bson.M{"name": "John Jones"}).One(&result)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result.Phone).To(Equal("+447777777777"))
+
+				// Update the name of the person inserted previously.
+				err = people.Update(bson.M{"name": "John Jones"}, bson.M{"$set": bson.M{"name": "Jane Jones"}})
+				Expect(err).ToNot(HaveOccurred())
+				err = people.Find(bson.M{"name": "Jane Jones"}).One(&result)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result.Phone).To(Equal("+447777777777"))
+
+				// Insert another person.
+				input2 := &Person{Name: "Tim Timmis", Phone: "+17734573777"}
+				err = people.Insert(input2)
+				Expect(err).ToNot(HaveOccurred())
+				err = people.Find(bson.M{"name": "Tim Timmis"}).One(&result)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result.Phone).To(Equal("+17734573777"))
+
+				// Delete the people collection.
+				err = people.DropCollection()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			By("re-unbinding from the service", func() {
+				req := unbindRequest(instanceID, bindingID, serviceID, planID, cfg)
 				resp := doRequest(brokerAPI, req)
 				Expect(resp.Code).To(Equal(200))
 
@@ -708,6 +714,45 @@ func doRequest(server http.Handler, req *http.Request) *httptest.ResponseRecorde
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 	return w
+}
+
+func bindRequest(instanceID, bindingID, serviceID, planID, appGUID string, cfg *config.Config) *http.Request {
+	path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID)
+	bindingDetailsJson := fmt.Sprintf(`
+		{
+			"service_id": "%s",
+			"plan_id": "%s",
+			"bind_resource": {
+				"app_guid": "%s"
+			},
+			"parameters": "{}"
+		}`,
+		serviceID,
+		planID,
+		appGUID,
+	)
+	req := helper.NewRequest(
+		"PUT",
+		path,
+		strings.NewReader(bindingDetailsJson),
+		cfg.Username,
+		cfg.Password,
+	)
+	return req
+}
+
+func unbindRequest(instanceID, bindingID, serviceID, planID string, cfg *config.Config) *http.Request {
+	path := fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID)
+	req := helper.NewRequest(
+		"DELETE",
+		path,
+		nil,
+		cfg.Username,
+		cfg.Password,
+		helper.UriParam{Key: "service_id", Value: serviceID},
+		helper.UriParam{Key: "plan_id", Value: planID},
+	)
+	return req
 }
 
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
