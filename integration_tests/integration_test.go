@@ -642,15 +642,16 @@ var _ = Describe("Broker integration tests", func() {
 
 			By("checking if instance uses enterprise cluster", func() {
 				deploymentName := fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID)
-				deployemnt, errs := composeClient.GetDeploymentByName(deploymentName)
+				deployment, errs := composeClient.GetDeploymentByName(deploymentName)
 				Expect(errs).To(BeNil())
-				clusterURL, err := url.Parse(deployemnt.Links.ClusterLink.HREF)
+				clusterURL, err := url.Parse(deployment.Links.ClusterLink.HREF)
 				Expect(err).ToNot(HaveOccurred())
 				splitPath := strings.Split(strings.TrimRight(clusterURL.Path, "{"), "/")
 				clusterID := splitPath[len(splitPath)-1]
-				cluster, errs := composeClient.GetCluster(clusterID)
+				expectedCluster, errs := composeClient.GetClusterByName(cfg.ClusterName)
 				Expect(errs).To(BeNil())
-				Expect(cluster.Type).To(Equal("private"))
+				Expect(clusterID).To(Equal(expectedCluster.ID))
+				Expect(expectedCluster.Type).To(Equal("private"))
 			})
 
 			By("unbinding from the service", func() {
