@@ -1,7 +1,16 @@
+dist: trusty
+sudo: false
+
 language: go
 
 go:
 - 1.8
+
+services:
+- mongodb
+
+before_script:
+- sleep 15
 
 before_install:
 - go get github.com/onsi/ginkgo/ginkgo
@@ -13,5 +22,3 @@ install:
 script:
 - go build -v . 
 - ./scripts/run-local-tests.sh
-
-
