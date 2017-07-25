@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 
-ACCESS_TOKEN=$(PASSWORD_STORE_DIR=$HOME/.paas-pass pass compose/dev/access_token)
+if [ -z $COMPOSE_API_KEY ]; then
+  COMPOSE_API_KEY=`PASSWORD_STORE_DIR=$HOME/.paas-pass pass compose/dev/access_token`
+  export COMPOSE_API_KEY
+fi
 
-export ACCESS_TOKEN
-
-ginkgo -r
+ginkgo --timeout 30m -r "$@"

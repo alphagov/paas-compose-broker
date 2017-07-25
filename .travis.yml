@@ -6,18 +6,9 @@ language: go
 go:
 - 1.8
 
-services:
-- mongodb
-
-before_script:
-- sleep 15
-
 before_install:
 - go get github.com/onsi/ginkgo/ginkgo
 
-before_script:
-  - sleep 15
-  
 install:
 # Prevent default install task that does a `go get -t ./...`
 - true

@@ -77,37 +77,28 @@ func makeRandomPassword(desired_bytes_of_entropy int) (string, error) {
 	return base64.URLEncoding.EncodeToString(buf), nil
 }
 
-func MongoConnection(uri, caBase64 string, requireTLS bool) (*mgo.Session, error) {
-	// This is work around for https://github.com/go-mgo/mgo/issues/84
-	u, _ := url.Parse(uri)
-	values := u.Query()
-	if _, ok := values["ssl"]; ok {
-		delete(values, "ssl")
-	}
-	u.RawQuery = values.Encode()
-	uri = u.String()
-
-	mongourl, err := mgo.ParseURL(uri)
+func MongoConnection(uri, caBase64 string) (*mgo.Session, error) {
+	mongoUrl, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
 	}
-
-	if requireTLS {
-		// Compose has self-signed certs for mongo. Make sure we verify it against CA certificate provided in binding.
-		ca, err := base64.StdEncoding.DecodeString(caBase64)
-		if err != nil {
-			return nil, err
-		}
-		roots := x509.NewCertPool()
-		roots.AppendCertsFromPEM(ca)
-
-		tlsConfig := &tls.Config{RootCAs: roots}
-		mongourl.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
-			return tls.Dial("tcp", addr.String(), tlsConfig)
-		}
-	}
-	mongourl.Timeout = 10 * time.Second
-	session, err := mgo.DialWithInfo(mongourl)
-
-	return session, err
+	password, _ := mongoUrl.User.Password()
+	return mgo.DialWithInfo(&mgo.DialInfo{
+		Addrs:    strings.Split(mongoUrl.Host, ","),
+		Database: strings.TrimPrefix(mongoUrl.Path, "/"),
+		Timeout:  10 * time.Second,
+		Username: mongoUrl.User.Username(),
+		Password: password,
+		DialServer: func(addr *mgo.ServerAddr) (net.Conn, error) {
+			ca, err := base64.StdEncoding.DecodeString(caBase64)
+			if err != nil {
+				return nil, err
+			}
+			roots := x509.NewCertPool()
+			roots.AppendCertsFromPEM(ca)
+			return tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr.String(), &tls.Config{
+				RootCAs: roots,
+			})
+		},
+	})
 }
