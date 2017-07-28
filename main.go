@@ -58,13 +58,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The RequireTLS flag exists such that local tests can use insecure database
-	// connections. In production it must always be set to true to forbid such
-	// insecure connections.
-	if !brokerInstance.RequireTLS {
-		panic("The broker must be configured to refuse non-TLS connections.")
-	}
-
 	credentials := brokerapi.BrokerCredentials{
 		Username: config.Username,
 		Password: config.Password,

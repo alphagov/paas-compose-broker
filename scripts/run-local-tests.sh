@@ -1,5 +1,3 @@
 #!/bin/bash
 
-export SKIP_COMPOSE_API_TESTS=true
-
-ginkgo -r
+SKIP_COMPOSE_API_TESTS=true ginkgo --timeout 30m -r

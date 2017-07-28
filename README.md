@@ -52,13 +52,25 @@ This is a work-in-progress implementation of a service broker for services provi
 `PASSWORD` - username password
 `DB_PREFIX` - a prefix that can be used to tag instances. Defaults to `compose-broker`
 `CLUSTER_NAME` - a name of your enterprise cluster if you've got one and want to use it. Defaults to hosted compose
-`ACCESS_TOKEN` - your API key for Compose.
+`COMPOSE_API_KEY` - your API key for Compose.
 
-## Running tests locally
 
-The integration tests communicate with MongoDB server(s). You will need to run a MongoDB server on `localhost` before running local (non-Compose) tests.
+## Running tests
 
-```
-docker run -p 27017:27017 --name mongo -d mongo:3.2
-./scripts/run-local-tests.sh
-```
+Prerequisites:
+
+* [Ginkgo](https://onsi.github.io/ginkgo/) version `>= 1.4.0`
+* An API key for [Compose](https://www.compose.com/) if running the full tests.
+
+To run all tests (including integration tests):
+
+  ```
+  COMPOSE_API_KEY=<key> ./scripts/run-all-tests.sh
+  ```
+
+To only run the unit tests you can use:
+
+  ```
+  ./scripts/run-local-tests.sh
+  ```
+

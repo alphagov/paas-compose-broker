@@ -62,9 +62,9 @@ func New() (*Config, error) {
 		c.DBPrefix = "compose-broker"
 	}
 
-	c.APIToken = os.Getenv("ACCESS_TOKEN")
+	c.APIToken = os.Getenv("COMPOSE_API_KEY")
 	if c.APIToken == "" {
-		return nil, fmt.Errorf("Please export $ACCESS_TOKEN")
+		return nil, fmt.Errorf("Please export $COMPOSE_API_KEY")
 	}
 
 	c.ClusterName = os.Getenv("CLUSTER_NAME")

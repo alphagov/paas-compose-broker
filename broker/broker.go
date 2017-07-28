@@ -56,7 +56,6 @@ type Broker struct {
 	Logger         lager.Logger
 	AccountID      string
 	ClusterID      string
-	RequireTLS     bool
 }
 
 func New(composeClient compose.Client, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
@@ -72,7 +71,6 @@ func New(composeClient compose.Client, config *config.Config, catalog *catalog.C
 		ComposeCatalog: catalog,
 		Logger:         logger,
 		AccountID:      account.ID,
-		RequireTLS:     true,
 	}
 
 	if config.ClusterName != "" {
@@ -216,47 +214,36 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		return binding, fmt.Errorf("failed to get connection string")
 	}
 
-	dbName := makeDatabaseName(instanceID)
-	username := makeUserName(bindingID)
-	password, err := makeRandomPassword(passwordLength)
-	if err != nil {
-		return binding, err
-	}
+	// Different database types have different needs for setting up credentials
+	switch deploymentMeta.Type {
+	case "mongodb":
+		creds, err := newMongoCredentials(instanceID, bindingID, deployment)
+		if err != nil {
+			return binding, err
+		}
+		binding.Credentials = creds
+	case "elastic_search":
+		fallthrough
+	case "fakedb": // used by unit tests
+		bindingURL, err := url.Parse(deployment.Connection.Direct[0])
+		if err != nil {
+			return binding, err
+		}
+		binding.Credentials = Credentials{
+			Host:     bindingURL.Hostname(),
+			Port:     bindingURL.Port(),
+			Name:     strings.TrimPrefix(bindingURL.Path, "/"),
+			Username: bindingURL.User.Username(),
+			URI:      deployment.Connection.Direct[0],
+			Password: func() string {
+				pass, _ := bindingURL.User.Password()
+				return pass
+			}(),
+			CACertificateBase64: deployment.CACertificateBase64,
+		}
 
-	session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64, b.RequireTLS)
-	if err != nil {
-		return binding, err
-	}
-	err = session.DB(dbName).UpsertUser(&mgo.User{
-		Username: username,
-		Password: password,
-		Roles:    []mgo.Role{mgo.RoleReadWrite},
-	})
-	if err != nil {
-		return binding, err
-	}
-
-	bindingURL, err := url.Parse(deployment.Connection.Direct[0])
-	if err != nil {
-		return binding, err
-	}
-	bindingURL.User = url.UserPassword(username, password)
-	bindingURL.Path = fmt.Sprintf("/%s", dbName)
-
-	// FIXME: Follow up story should fix mongo connection string handling.
-	// Right now we are hardcoding first host from the comma delimited list that Compose provides.
-	// url.Parse() parses mongo connection string wrongly and doesn't return an error
-	// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
-	port := strings.Split(bindingURL.Port(), ",")
-
-	binding.Credentials = Credentials{
-		Host:                bindingURL.Hostname(),
-		Port:                port[0],
-		Name:                dbName,
-		Username:            username,
-		Password:            password,
-		URI:                 bindingURL.String(),
-		CACertificateBase64: deployment.CACertificateBase64,
+	default:
+		return binding, fmt.Errorf("credentials generation not implemented for service type: %s", deploymentMeta.Type)
 	}
 
 	return binding, nil
@@ -289,12 +276,22 @@ func (b *Broker) Unbind(context context.Context, instanceID, bindingID string, d
 		return fmt.Errorf("failed to get connection string")
 	}
 
-	session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64, b.RequireTLS)
-	if err != nil {
-		return err
-	}
+	// Different database types have different needs for revoking credentials
+	switch deploymentMeta.Type {
+	case "mongodb":
+		session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64)
+		if err != nil {
+			return err
+		}
 
-	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
+		return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
+	case "elastic_search":
+		fallthrough
+	case "fakedb": // used by unit tests
+		return nil
+	default:
+		return fmt.Errorf("credentials destruction not implemented for service type: %s", deploymentMeta.Type)
+	}
 }
 
 func (b *Broker) Update(context context.Context, instanceID string, details brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.UpdateServiceSpec, error) {
@@ -387,4 +384,44 @@ func (b *Broker) LastOperation(context context.Context, instanceID, operationDat
 	lastOperation.Description = recipe.StatusDetail
 
 	return lastOperation, nil
+}
+
+func newMongoCredentials(instanceID string, bindingID string, deployment *composeapi.Deployment) (creds Credentials, err error) {
+	creds.Name = makeDatabaseName(instanceID)
+	creds.Username = makeUserName(bindingID)
+	creds.Password, err = makeRandomPassword(passwordLength)
+	if err != nil {
+		return creds, err
+	}
+
+	session, err := MongoConnection(deployment.Connection.Direct[0], deployment.CACertificateBase64)
+	if err != nil {
+		return creds, err
+	}
+	defer session.Close()
+
+	err = session.DB(creds.Name).UpsertUser(&mgo.User{
+		Username: creds.Username,
+		Password: creds.Password,
+		Roles:    []mgo.Role{mgo.RoleReadWrite},
+	})
+	if err != nil {
+		return creds, err
+	}
+
+	// FIXME: Follow up story should fix mongo connection string handling.
+	// Right now we are hardcoding first host from the comma delimited list that Compose provides.
+	// url.Parse() parses mongo connection string wrongly and doesn't return an error
+	// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
+	bindingURL, err := url.Parse(deployment.Connection.Direct[0])
+	if err != nil {
+		return creds, err
+	}
+	bindingURL.User = url.UserPassword(creds.Username, creds.Password)
+	bindingURL.Path = fmt.Sprintf("/%s", creds.Name)
+	creds.Host = bindingURL.Hostname()
+	creds.Port = strings.Split(bindingURL.Port(), ",")[0]
+	creds.URI = bindingURL.String()
+	creds.CACertificateBase64 = deployment.CACertificateBase64
+	return creds, nil
 }

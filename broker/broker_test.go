@@ -16,6 +16,7 @@ import (
 var _ = Describe("Broker", func() {
 
 	Describe("constructing a broker", func() {
+
 		var (
 			fakeComposeClient *fakes.FakeComposeClient
 			cfg               *config.Config
@@ -83,4 +84,5 @@ var _ = Describe("Broker", func() {
 			})
 		})
 	})
+
 })
