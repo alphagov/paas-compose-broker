@@ -5,4 +5,4 @@ if [ -z $COMPOSE_API_KEY ]; then
   export COMPOSE_API_KEY
 fi
 
-ginkgo --timeout 30m -r "$@"
+ginkgo --timeout 30m --nodes=8 -r "$@"
