@@ -9,17 +9,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/alphagov/paas-compose-broker/broker"
-	"github.com/alphagov/paas-compose-broker/catalog"
-	"github.com/alphagov/paas-compose-broker/compose/fakes"
-	"github.com/alphagov/paas-compose-broker/config"
-	"github.com/pivotal-cf/brokerapi"
-	uuid "github.com/satori/go.uuid"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+
+	"github.com/alphagov/paas-compose-broker/broker"
+	"github.com/alphagov/paas-compose-broker/catalog"
+	"github.com/alphagov/paas-compose-broker/compose/fakes"
+	"github.com/alphagov/paas-compose-broker/config"
+	enginefakes "github.com/alphagov/paas-compose-broker/dbengine/fakes"
+	"github.com/pivotal-cf/brokerapi"
+	uuid "github.com/satori/go.uuid"
 )
 
 func NewRequest(method, path string, body io.Reader, username, password string, params ...UriParam) *http.Request {
@@ -140,7 +142,9 @@ var _ = Describe("Broker API", func() {
 		logger := lager.NewLogger("compose-broker")
 		logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, cfg.LogLevel))
 
-		fakeBroker, err := broker.New(fakeComposeClient, cfg, &catalog.ComposeCatalog{
+		fakeDBProvider := enginefakes.FakeProvider{}
+
+		fakeBroker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.ComposeCatalog{
 			Catalog: catalog.Catalog{
 				Services: []brokerapi.Service{
 					service,

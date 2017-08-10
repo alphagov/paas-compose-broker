@@ -12,6 +12,7 @@ import (
 	"github.com/alphagov/paas-compose-broker/catalog"
 	"github.com/alphagov/paas-compose-broker/compose"
 	"github.com/alphagov/paas-compose-broker/config"
+	"github.com/alphagov/paas-compose-broker/dbengine"
 	"github.com/pivotal-cf/brokerapi"
 )
 
@@ -51,8 +52,8 @@ func main() {
 		logger.Error("could not create composeapi client", err)
 		os.Exit(1)
 	}
-
-	brokerInstance, err := broker.New(composeapi, config, newCatalog, logger)
+	dbEngineProvider := dbengine.NewProviderService()
+	brokerInstance, err := broker.New(composeapi, dbEngineProvider, config, newCatalog, logger)
 	if err != nil {
 		logger.Error("could not initialise broker", err)
 		os.Exit(1)
