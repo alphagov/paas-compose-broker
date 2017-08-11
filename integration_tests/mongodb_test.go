@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"github.com/alphagov/paas-compose-broker/broker"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	mgo "gopkg.in/mgo.v2"
@@ -14,24 +13,27 @@ var _ = Describe("Broker Compose Integration", func() {
 
 	Context("MongoDB", func() {
 
+		const (
+			mongoServiceID = "36f8bf47-c9e7-46d9-880f-5dfc838d05cb"
+			mongoPlanID    = "fdfd4fc1-ce69-451c-a436-c2e2795b9abe"
+		)
+
+		var (
+			service *helper.ServiceHelper
+			binding *helper.BindingData
+			conn    *mgo.Session
+			appID   string
+		)
+
 		BeforeEach(func() {
 			if skipIntegrationTests {
 				Skip("SKIP_COMPOSE_API_TESTS is set, skipping tests against real Compose API")
 			}
+
+			appID = helper.NewUUID()
 		})
 
 		It("should support the full instance lifecycle", func() {
-
-			const (
-				mongoServiceID = "36f8bf47-c9e7-46d9-880f-5dfc838d05cb"
-				mongoPlanID    = "fdfd4fc1-ce69-451c-a436-c2e2795b9abe"
-			)
-
-			var (
-				service *helper.ServiceHelper
-				binding *helper.BindingData
-				conn    *mgo.Session
-			)
 
 			By("initializing service from catalog", func() {
 				service = helper.NewService(mongoServiceID, mongoPlanID)
@@ -46,7 +48,7 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("binding a resource to the service", func() {
-				binding = service.Bind()
+				binding = service.Bind(appID)
 			})
 
 			defer By("unbinding the service", func() {
@@ -55,7 +57,7 @@ var _ = Describe("Broker Compose Integration", func() {
 
 			By("connecting to the service", func() {
 				var err error
-				conn, err = broker.MongoConnection(binding.Credentials.URI, binding.Credentials.CACertificateBase64)
+				conn, err = helper.MongoConnection(binding.Credentials.URI, binding.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				err = conn.Ping()
 				Expect(err).ToNot(HaveOccurred())
@@ -149,25 +151,25 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring each binding returns unique credentials", func() {
-				binding2 := service.Bind()
+				binding2 := service.Bind(appID)
 				defer service.Unbind(binding2.ID)
 				Expect(binding2.Credentials.Username).ToNot(Equal(binding.Credentials.Username))
 				Expect(binding2.Credentials.Password).ToNot(Equal(binding.Credentials.Password))
 			})
 
 			By("ensuring each binding returns same database name", func() {
-				binding2 := service.Bind()
+				binding2 := service.Bind(appID)
 				defer service.Unbind(binding2.ID)
 				Expect(binding2.Credentials.Name).To(Equal(binding.Credentials.Name))
 			})
 
 			By("ensuring unbind then rebind to same appID rotates credentials", func() {
-				binding := service.Bind() // FIXME/chrisfarms: pass appID to ensure Bind is not basing credentials on appID?
+				binding := service.Bind(appID)
 				username := binding.Credentials.Username
 				password := binding.Credentials.Password
 				name := binding.Credentials.Name
 				service.Unbind(binding.ID)
-				rebinding := service.Bind()
+				rebinding := service.Bind(appID)
 				defer service.Unbind(rebinding.ID)
 				Expect(rebinding.Credentials.Username).ToNot(Equal(username))
 				Expect(rebinding.Credentials.Password).ToNot(Equal(password))
@@ -175,9 +177,9 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring second binding credentials can read previously inserted data", func() {
-				binding2 := service.Bind()
+				binding2 := service.Bind(appID)
 				defer service.Unbind(binding2.ID)
-				conn2, err := broker.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
+				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
 				people := conn2.DB(binding.Credentials.Name).C("people")
@@ -191,9 +193,9 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring second binding credentials can update previously inserted data", func() {
-				binding2 := service.Bind()
+				binding2 := service.Bind(appID)
 				defer service.Unbind(binding2.ID)
-				conn2, err := broker.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
+				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
 				people := conn2.DB(binding.Credentials.Name).C("people")
@@ -209,9 +211,9 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring second binding credentials can insert data", func() {
-				binding2 := service.Bind()
+				binding2 := service.Bind(appID)
 				defer service.Unbind(binding2.ID)
-				conn2, err := broker.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
+				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
 				db := conn2.DB(binding.Credentials.Name)
@@ -226,9 +228,9 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring revoked bindings disallow connecting", func() {
-				revokedBinding := service.Bind()
+				revokedBinding := service.Bind(appID)
 				service.Unbind(revokedBinding.ID)
-				_, err := broker.MongoConnection(revokedBinding.Credentials.URI, revokedBinding.Credentials.CACertificateBase64)
+				_, err := helper.MongoConnection(revokedBinding.Credentials.URI, revokedBinding.Credentials.CACertificateBase64)
 				Expect(err).To(HaveOccurred())
 			})
 

@@ -2,15 +2,15 @@ package helper
 
 import (
 	"bytes"
-	"code.cloudfoundry.org/lager"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/pivotal-cf/brokerapi"
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,10 +18,18 @@ import (
 	"strings"
 	"time"
 
+	mgo "gopkg.in/mgo.v2"
+
+	"code.cloudfoundry.org/lager"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"github.com/pivotal-cf/brokerapi"
+
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/catalog"
 	"github.com/alphagov/paas-compose-broker/compose"
 	"github.com/alphagov/paas-compose-broker/config"
+	"github.com/alphagov/paas-compose-broker/dbengine"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -128,12 +136,13 @@ type ServiceHelper struct {
 	BrokerInstance *broker.Broker
 	BrokerAPI      http.Handler
 	ComposeClient  compose.Client
+	Provider       dbengine.Provider
 }
 
-func (s *ServiceHelper) Bind() (binding *BindingData) {
+func (s *ServiceHelper) Bind(appID string) (binding *BindingData) {
 	binding = &BindingData{
 		ID:    NewUUID(),
-		AppID: NewUUID(),
+		AppID: appID,
 	}
 	resp := DoRequest(s.BrokerAPI, NewRequest(
 		"PUT",
@@ -148,7 +157,9 @@ func (s *ServiceHelper) Bind() (binding *BindingData) {
 		}`, s.ServiceID, s.PlanID, binding.AppID)),
 		s.Cfg.Username,
 		s.Cfg.Password,
+		UriParam{Key: "accepts_incomplete", Value: "true"},
 	))
+
 	Expect(resp.Code).To(Equal(201))
 
 	err := json.NewDecoder(resp.Body).Decode(&binding)
@@ -172,6 +183,7 @@ func (s *ServiceHelper) Unbind(bindingID string) {
 		UriParam{Key: "service_id", Value: s.ServiceID},
 		UriParam{Key: "plan_id", Value: s.PlanID},
 	))
+
 	Expect(resp.Code).To(Equal(200))
 	// Response will be an empty JSON object for future compatibility
 	var data map[string]interface{}
@@ -255,6 +267,7 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 			DBPrefix: "test-suite",
 			APIToken: os.Getenv("COMPOSE_API_KEY"),
 		},
+		Provider: dbengine.NewProviderService(),
 	}
 	Expect(s.Cfg.APIToken).NotTo(BeEmpty(), "Please export $COMPOSE_API_KEY")
 	var err error
@@ -336,7 +349,8 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 
 	logger := lager.NewLogger("compose-broker")
 	logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, s.Cfg.LogLevel))
-	s.BrokerInstance, err = broker.New(s.ComposeClient, s.Cfg, s.Catalog, logger)
+
+	s.BrokerInstance, err = broker.New(s.ComposeClient, s.Provider, s.Cfg, s.Catalog, logger)
 	Expect(err).NotTo(HaveOccurred())
 
 	s.BrokerAPI = brokerapi.New(s.BrokerInstance, logger, brokerapi.BrokerCredentials{
@@ -356,4 +370,31 @@ func randString(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func MongoConnection(uri, caBase64 string) (*mgo.Session, error) {
+	mongoUrl, err := url.Parse(uri)
+	if err != nil {
+		return nil, err
+	}
+	password, _ := mongoUrl.User.Password()
+	return mgo.DialWithInfo(&mgo.DialInfo{
+		Addrs: strings.Split(mongoUrl.Host, ","),
+		//Addrs:    []string{strings.Split(mongoUrl.Host, ",")[0] + ":" + mongoUrl.Port()},
+		Database: strings.TrimPrefix(mongoUrl.Path, "/"),
+		Timeout:  10 * time.Second,
+		Username: mongoUrl.User.Username(),
+		Password: password,
+		DialServer: func(addr *mgo.ServerAddr) (net.Conn, error) {
+			ca, err := base64.StdEncoding.DecodeString(caBase64)
+			if err != nil {
+				return nil, err
+			}
+			roots := x509.NewCertPool()
+			roots.AppendCertsFromPEM(ca)
+			return tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr.String(), &tls.Config{
+				RootCAs: roots,
+			})
+		},
+	})
 }
