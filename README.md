@@ -68,26 +68,18 @@ To run all tests (including integration tests):
 COMPOSE_API_KEY=<key> ./scripts/run-all-tests.sh
 ```
 
-To only run the unit tests you will need to use Docker for the database engine suite:
+To only run the unit tests you will need to use Docker for Mac for the database engine suite:
 
-```
-# Mongodb
-docker run -p 27017:27017 --name mongo -e MONGO_INITDB_ROOT_PASSWORD= -d mongo:3.4
+The local test script handles pulling in the required docker containers and then cleans them up afterwards
 
-# Elasticsearch
-# source: https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html
-# Note: this must be run from the root directory of the repository
-docker run -p 9200:9200 --name elasticsearch -v "${PWD}/dbengine/test/elasticsearch-docker-config.yml":/usr/share/elasticsearch/config/elasticsearch.yml -e http.host=0.0.0.0 -e transport.host=127.0.0.1 -d docker.elastic.co/elasticsearch/elasticsearch:5.5.1
-
-# Check elasticsearch is running:
-curl localhost:9200/_cluster/health
-
-# Clean up afterwards
-docker rm -f mongo elasticsearch
-```
-
-Then you can run them locally:
+To run the tests execute either;
 
 ```
 ./scripts/run-local-tests.sh
+```
+
+or;
+
+```
+make unit
 ```
