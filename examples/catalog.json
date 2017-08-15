@@ -21,10 +21,13 @@
       "id": "fdfd4fc1-ce69-451c-a436-c2e2795b9abe",
       "name": "small",
       "description": "1GB Storage / 102MB RAM at $35.00/month.",
+      "compose": {
+        "units": 1,
+        "databaseType": "mongodb"
+      },
       "metadata": {
         "displayName": "Mongo Small",
         "bullets": [],
-        "units": 1,
         "costs": [{
           "amount": {
             "USD": 35
@@ -35,13 +38,13 @@
     }]
   },{
     "id": "6e9202f2-c2e1-4de8-8d4a-a8c898fc2d8c",
-    "name": "elastic_search",
+    "name": "elasticsearch",
     "bindable": true,
     "description": "Compose Elasticsearch instance",
     "requires": [],
     "tags": [
-    "elasticsearch",
-    "compose"
+      "elasticsearch",
+      "compose"
     ],
     "metadata": {
       "displayName": "Elasticsearch",
@@ -55,10 +58,13 @@
       "id": "6d051078-0913-403c-9763-1d03ecee50d9",
       "name": "tiny",
       "description": "2GB Storage / 2048MB RAM.",
+      "compose": {
+        "units": 1,
+        "databaseType": "elastic_search"
+      },
       "metadata": {
         "displayName": "Elasticsearch Tiny",
-        "bullets": [],
-        "units": 1
+        "bullets": []
       }
     }]
   }]

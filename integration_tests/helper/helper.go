@@ -130,7 +130,7 @@ type ServiceHelper struct {
 	InstanceID     string
 	ServiceID      string
 	PlanID         string
-	Catalog        *catalog.ComposeCatalog
+	Catalog        *catalog.Catalog
 	Cfg            *config.Config
 	Logger         lager.Logger
 	BrokerInstance *broker.Broker
@@ -293,10 +293,13 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 				"id": "fdfd4fc1-ce69-451c-a436-c2e2795b9abe",
 				"name": "small",
 				"description": "1GB Storage / 102MB RAM at $35.00/month.",
+				"compose": {
+					"databaseType": "mongodb",
+					"units": 1
+				},
 				"metadata": {
 					"displayName": "Mongo Small",
 					"bullets": [],
-					"units": 1,
 					"costs": [{
 						"amount": {
 							"USD": 35
@@ -307,7 +310,7 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 			}]
 		},{
 			"id": "6e9202f2-c2e1-4de8-8d4a-a8c898fc2d8c",
-			"name": "elastic_search",
+			"name": "elasticsearch",
 			"bindable": true,
 			"description": "Compose Elasticsearch instance",
 			"requires": [],
@@ -327,15 +330,19 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 				"id": "6d051078-0913-403c-9763-1d03ecee50d9",
 				"name": "tiny",
 				"description": "2GB Storage / 2048MB RAM.",
+				"compose": {
+					"databaseType": "elastic_search",
+					"units": 1
+				},
 				"metadata": {
 					"displayName": "Elasticsearch Tiny",
-					"bullets": [],
-					"units": 1
+					"bullets": []
 				}
 			}]
 		}]
 	}`))
 	Expect(err).ToNot(HaveOccurred())
+	Expect(len(s.Catalog.Services)).To(Equal(2))
 
 	s.ComposeClient, err = compose.NewClient(s.Cfg.APIToken)
 	Expect(err).NotTo(HaveOccurred())

@@ -73,6 +73,7 @@ var _ = Describe("Broker Compose Integration", func() {
 			putURI := binding.Credentials.URI + "twitter/tweet/1?op_type=create"
 			putData := "{\"user\" : \"kimchy\",\"post_date\" : \"2009-11-15T14:12:12\",\"message\" : \"trying out Elasticsearch\"}"
 			request, err := http.NewRequest("PUT", putURI, strings.NewReader(putData))
+			Expect(err).NotTo(HaveOccurred())
 			request.Header.Set("Content-Type", "application/json")
 			resp, err := client.Do(request)
 			Expect(err).NotTo(HaveOccurred())
