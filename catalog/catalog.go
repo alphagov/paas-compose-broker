@@ -49,5 +49,13 @@ func (s *Service) GetPlan(id string) (*Plan, error) {
 
 func Load(input io.Reader) (*Catalog, error) {
 	var c Catalog
-	return &c, json.NewDecoder(input).Decode(&c)
+	if err := json.NewDecoder(input).Decode(&c); err != nil {
+		return nil, err
+	}
+	for _, s := range c.Services {
+		for _, p := range s.Plans {
+			s.Service.Plans = append(s.Service.Plans, p.ServicePlan)
+		}
+	}
+	return &c, nil
 }

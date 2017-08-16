@@ -75,9 +75,6 @@ func New(composeClient compose.Client, dbEngineProvider dbengine.Provider, confi
 func (b *Broker) Services(context context.Context) []brokerapi.Service {
 	services := []brokerapi.Service{}
 	for _, s := range b.Catalog.Services {
-		for _, p := range s.Plans {
-			s.Service.Plans = append(s.Service.Plans, p.ServicePlan)
-		}
 		services = append(services, s.Service)
 	}
 	return services
