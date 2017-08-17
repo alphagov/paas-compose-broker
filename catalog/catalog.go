@@ -4,81 +4,58 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/pivotal-cf/brokerapi"
 )
 
-type ComposeCatalog struct {
-	Catalog      Catalog
-	ComposeUnits ComposeUnits
-}
-
-// Catalog is an upstream Catalog struct
-type Catalog struct {
-	Services []brokerapi.Service `json:"services"`
-}
-
-type ComposeUnits struct {
-	Services []Service `json:"services"`
-}
-
 type Service struct {
-	ID    string        `json:"id"`
-	Name  string        `json:"name"`
-	Plans []ServicePlan `json:"plans"`
+	Plans []*Plan `json:"plans"`
+	brokerapi.Service
 }
 
-type ServicePlan struct {
-	ID       string              `json:"id"`
-	Metadata ServicePlanMetadata `json:"metadata,omitempty"`
+type Plan struct {
+	Compose ComposeConfig `json:"compose"`
+	brokerapi.ServicePlan
 }
 
-type ServicePlanMetadata struct {
-	Units int `json:"units,omitempty"`
+type ComposeConfig struct {
+	Units        int    `json:"units"`
+	DatabaseType string `json:"databaseType"`
 }
 
-func (c *ComposeCatalog) GetService(id string) (*Service, error) {
-	for _, service := range c.ComposeUnits.Services {
+type Catalog struct {
+	Services []*Service `json:"services"`
+}
+
+func (c *Catalog) GetService(id string) (*Service, error) {
+	for _, service := range c.Services {
 		if service.ID == id {
-			return &service, nil
+			return service, nil
 		}
 	}
 
-	return nil, fmt.Errorf("service: not found")
+	return nil, fmt.Errorf("service %v: not found", id)
 }
 
-func (s *Service) GetPlan(id string) (*ServicePlan, error) {
+func (s *Service) GetPlan(id string) (*Plan, error) {
 	for _, plan := range s.Plans {
 		if plan.ID == id {
-			return &plan, nil
+			return plan, nil
 		}
 	}
 
-	return nil, fmt.Errorf("plan: not found")
+	return nil, fmt.Errorf("plan %v: not found", id)
 }
 
-func Load(input io.Reader) (*ComposeCatalog, error) {
-	buf, err := ioutil.ReadAll(input)
-	if err != nil {
+func Load(input io.Reader) (*Catalog, error) {
+	var c Catalog
+	if err := json.NewDecoder(input).Decode(&c); err != nil {
 		return nil, err
 	}
-
-	c := &ComposeCatalog{}
-
-	err = json.Unmarshal(buf, &c.Catalog)
-	if err != nil {
-		return nil, err
+	for _, s := range c.Services {
+		for _, p := range s.Plans {
+			s.Service.Plans = append(s.Service.Plans, p.ServicePlan)
+		}
 	}
-
-	err = json.Unmarshal(buf, &c.ComposeUnits)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func (c *ComposeCatalog) Validate() error {
-	return nil
+	return &c, nil
 }

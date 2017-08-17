@@ -38,14 +38,14 @@ var composeStatus2State = map[string]brokerapi.LastOperationState{
 type Broker struct {
 	Compose          compose.Client
 	Config           *config.Config
-	ComposeCatalog   *catalog.ComposeCatalog
+	Catalog          *catalog.Catalog
 	Logger           lager.Logger
 	AccountID        string
 	ClusterID        string
 	DBEngineProvider dbengine.Provider
 }
 
-func New(composeClient compose.Client, dbEngineProvider dbengine.Provider, config *config.Config, catalog *catalog.ComposeCatalog, logger lager.Logger) (*Broker, error) {
+func New(composeClient compose.Client, dbEngineProvider dbengine.Provider, config *config.Config, catalog *catalog.Catalog, logger lager.Logger) (*Broker, error) {
 
 	account, errs := composeClient.GetAccount()
 	if len(errs) > 0 {
@@ -55,7 +55,7 @@ func New(composeClient compose.Client, dbEngineProvider dbengine.Provider, confi
 	broker := Broker{
 		Compose:          composeClient,
 		Config:           config,
-		ComposeCatalog:   catalog,
+		Catalog:          catalog,
 		Logger:           logger,
 		AccountID:        account.ID,
 		DBEngineProvider: dbEngineProvider,
@@ -73,7 +73,11 @@ func New(composeClient compose.Client, dbEngineProvider dbengine.Provider, confi
 }
 
 func (b *Broker) Services(context context.Context) []brokerapi.Service {
-	return b.ComposeCatalog.Catalog.Services
+	services := []brokerapi.Service{}
+	for _, s := range b.Catalog.Services {
+		services = append(services, s.Service)
+	}
+	return services
 }
 
 func (b *Broker) Provision(context context.Context, instanceID string, details brokerapi.ProvisionDetails, asyncAllowed bool) (brokerapi.ProvisionedServiceSpec, error) {
@@ -91,7 +95,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	service, err := b.ComposeCatalog.GetService(details.ServiceID)
+	service, err := b.Catalog.GetService(details.ServiceID)
 	if err != nil {
 		return spec, err
 	}
@@ -110,8 +114,8 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		Name:         instanceName,
 		AccountID:    b.AccountID,
 		Datacenter:   ComposeDatacenter,
-		DatabaseType: service.Name,
-		Units:        plan.Metadata.Units,
+		DatabaseType: plan.Compose.DatabaseType,
+		Units:        plan.Compose.Units,
 		SSL:          true,
 		ClusterID:    b.ClusterID,
 	}
@@ -290,7 +294,7 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	service, err := b.ComposeCatalog.GetService(details.ServiceID)
+	service, err := b.Catalog.GetService(details.ServiceID)
 	if err != nil {
 		return spec, err
 	}
@@ -318,7 +322,7 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 
 	params := composeapi.ScalingsParams{
 		DeploymentID: deployment.ID,
-		Units:        plan.Metadata.Units,
+		Units:        plan.Compose.Units,
 	}
 
 	recipe, errs := b.Compose.SetScalings(params)

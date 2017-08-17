@@ -144,26 +144,21 @@ var _ = Describe("Broker API", func() {
 
 		fakeDBProvider := enginefakes.FakeProvider{}
 
-		fakeBroker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.ComposeCatalog{
-			Catalog: catalog.Catalog{
-				Services: []brokerapi.Service{
-					service,
-				},
-			},
-			ComposeUnits: catalog.ComposeUnits{
-				Services: []catalog.Service{
-					catalog.Service{
-						ID:   service.ID,
-						Name: service.Name,
-						Plans: []catalog.ServicePlan{
-							catalog.ServicePlan{
+		fakeBroker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.Catalog{
+			Services: []*catalog.Service{
+				{
+					Plans: []*catalog.Plan{
+						{
+							ServicePlan: brokerapi.ServicePlan{
 								ID: service.Plans[0].ID,
-								Metadata: catalog.ServicePlanMetadata{
-									Units: 1,
-								},
+							},
+							Compose: catalog.ComposeConfig{
+								Units:        1,
+								DatabaseType: "fakedb",
 							},
 						},
 					},
+					Service: service,
 				},
 			},
 		}, logger)

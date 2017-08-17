@@ -36,7 +36,7 @@ var _ = Describe("Broker", func() {
 			})
 
 			It("looks up the compose account ID", func() {
-				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.ComposeCatalog{}, nil)
+				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(b.AccountID).To(Equal("1234"))
@@ -44,7 +44,7 @@ var _ = Describe("Broker", func() {
 
 			It("returns an error if looking up the account fails", func() {
 				fakeComposeClient.GlobalError = errors.New("something went wrong")
-				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.ComposeCatalog{}, nil)
+				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -64,7 +64,7 @@ var _ = Describe("Broker", func() {
 			})
 
 			It("leaves the cluster ID blank if no cluster name provided", func() {
-				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.ComposeCatalog{}, nil)
+				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(b.ClusterID).To(BeEmpty())
@@ -73,7 +73,7 @@ var _ = Describe("Broker", func() {
 			It("populates the clusterID using the provided name", func() {
 				cfg.ClusterName = "cluster-two"
 
-				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.ComposeCatalog{}, nil)
+				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(b.ClusterID).To(Equal("2"))
@@ -82,7 +82,7 @@ var _ = Describe("Broker", func() {
 			It("returns an error if the cluster ID can't be looked up", func() {
 				cfg.ClusterName = "non-existent"
 
-				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.ComposeCatalog{}, nil)
+				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).To(HaveOccurred())
 			})
 		})
