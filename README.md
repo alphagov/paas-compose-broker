@@ -35,7 +35,7 @@ This is a work-in-progress implementation of a service broker for services provi
   curl -k -u compose-broker:unguessable https://compose-broker.${DEPLOY_ENV}.cloudfoundry-apps-domain.example.com/v2/catalog
   ```
 
-* Register the service:
+* Register the service broker:
 
   ```
    cf update-service-broker compose-broker compose-broker "$COMPOSE_BROKER_PASS" "https://compose-broker.${APPS_DNS_ZONE_NAME}"
@@ -44,6 +44,7 @@ This is a work-in-progress implementation of a service broker for services provi
 
    ```
    cf enable-service-access mongodb
+   cf enable-service-access elasticsearch
    ```
 
 ## Environmental variables
