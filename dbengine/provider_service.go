@@ -15,6 +15,8 @@ func (p *ProviderService) GetDBEngine(engine string) (DBEngine, error) {
 	switch strings.ToLower(engine) {
 	case "mongodb":
 		return NewMongoEngine(), nil
+	case "redis":
+		return NewRedisEngine(), nil
 	case "elastic_search":
 		return NewElasticSearchEngine(), nil
 	}
