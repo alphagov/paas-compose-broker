@@ -66,20 +66,10 @@ Prerequisites:
 To run all tests (including integration tests):
 
 ```
-COMPOSE_API_KEY=<key> ./scripts/run-all-tests.sh
+COMPOSE_API_KEY=<key> make test
 ```
 
-To only run the unit tests you will need to use Docker for Mac for the database engine suite:
-
-The local test script handles pulling in the required docker containers and then cleans them up afterwards
-
-To run the tests execute either;
-
-```
-./scripts/run-local-tests.sh
-```
-
-or;
+To only run the unit tests:
 
 ```
 make unit

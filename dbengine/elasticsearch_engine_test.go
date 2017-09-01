@@ -31,12 +31,6 @@ var _ = Describe("ElasticSearch", func() {
 			dbEngine = &ElasticSearchEngine{credentials: &credentials}
 		})
 
-		It("should testConnection() successfully", func() {
-			err := dbEngine.testConnection()
-
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-
 		It("should fail to testConnection() due to faulty url", func() {
 			dbEngine.credentials.URI = "http://localhost:8080"
 			err := dbEngine.testConnection()
@@ -71,12 +65,6 @@ var _ = Describe("ElasticSearch", func() {
 
 	Context("DB Engine", func() {
 		dbEngine = &ElasticSearchEngine{}
-
-		It("should Open() the connection successfully", func() {
-			err := dbEngine.Open(&credentials)
-
-			Expect(err).ShouldNot(HaveOccurred())
-		})
 
 		It("should fail to Open() the connection due to lack of credentials being provided", func() {
 			err := dbEngine.Open(nil)
@@ -129,15 +117,6 @@ var _ = Describe("ElasticSearch", func() {
 			creds, err := dbEngine.ParseConnectionString(nil)
 			Expect(err).Should(HaveOccurred())
 			Expect(creds).To(BeNil())
-		})
-
-		It("does not need to create users", func() {
-			creds, err := dbEngine.CreateUser("instanceID", "bindingID", &deployment)
-
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(creds).NotTo(BeNil())
-			Expect(creds.Username).To(BeEmpty())
-			Expect(creds.Password).To(BeEmpty())
 		})
 	})
 })
