@@ -4,3 +4,6 @@ applications:
   memory: 128M
   instances: 2
   buildpack: go_buildpack
+  env:
+    GOVERSION: go1.8
+    GOPACKAGENAME: github.com/alphagov/paas-compose-broker
