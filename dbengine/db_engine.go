@@ -1,7 +1,5 @@
 package dbengine
 
-import composeapi "github.com/compose/gocomposeapi"
-
 type Credentials struct {
 	Host                string `json:"host"`
 	Port                string `json:"port"`
@@ -13,9 +11,6 @@ type Credentials struct {
 }
 
 type DBEngine interface {
-	ParseConnectionString(deployment *composeapi.Deployment) (*Credentials, error)
-	CreateUser(instanceID, bindingID string, deployment *composeapi.Deployment) (*Credentials, error)
-	DropUser(instanceID, bindingID string, deployment *composeapi.Deployment) error
-	Open(*Credentials) error
-	Close()
+	GenerateCredentials(instanceID, bindingID string) (*Credentials, error)
+	RevokeCredentials(instanceID, bindingID string) error
 }

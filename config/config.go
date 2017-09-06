@@ -15,7 +15,6 @@ var (
 		"ERROR": lager.ERROR,
 		"FATAL": lager.FATAL,
 	}
-	err error
 )
 
 type Config struct {

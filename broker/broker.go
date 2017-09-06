@@ -191,46 +191,24 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		return binding, err
 	}
 
-	deploymentMeta, err := findDeployment(b.Compose, instanceName)
+	deployment, err := findDeployment(b.Compose, instanceName)
 	if err == errDeploymentNotFound {
 		return binding, brokerapi.ErrInstanceDoesNotExist
 	} else if err != nil {
 		return binding, err
 	}
 
-	deployment, errs := b.Compose.GetDeployment(deploymentMeta.ID)
-	if len(errs) > 0 {
-		return binding, compose.SquashErrors(errs)
-	}
 	if deployment.Connection.Direct == nil || len(deployment.Connection.Direct) < 1 {
 		return binding, fmt.Errorf("failed to get connection string")
 	}
 
-	dbEngine, err := b.DBEngineProvider.GetDBEngine(deploymentMeta.Type)
+	dbEngine, err := b.DBEngineProvider.GetDBEngine(deployment)
 	if err != nil {
 		return binding, err
 	}
 
-	rootCredentials, err := dbEngine.ParseConnectionString(deployment)
-	if err != nil {
-		return binding, err
-	}
-
-	err = dbEngine.Open(rootCredentials)
-	if err != nil {
-		return binding, err
-	}
-
-	defer dbEngine.Close()
-
-	creds, err := dbEngine.CreateUser(instanceID, bindingID, deployment)
-	if err != nil {
-		return binding, err
-	}
-
-	binding.Credentials = creds
-
-	return binding, nil
+	binding.Credentials, err = dbEngine.GenerateCredentials(instanceID, bindingID)
+	return binding, err
 }
 
 func (b *Broker) Unbind(context context.Context, instanceID, bindingID string, details brokerapi.UnbindDetails) error {
@@ -245,38 +223,19 @@ func (b *Broker) Unbind(context context.Context, instanceID, bindingID string, d
 		return err
 	}
 
-	deploymentMeta, err := findDeployment(b.Compose, instanceName)
+	deployment, err := findDeployment(b.Compose, instanceName)
 	if err == errDeploymentNotFound {
 		return brokerapi.ErrInstanceDoesNotExist
 	} else if err != nil {
 		return err
 	}
 
-	deployment, errs := b.Compose.GetDeployment(deploymentMeta.ID)
-	if len(errs) > 0 {
-		return compose.SquashErrors(errs)
-	}
-	if deployment.Connection.Direct == nil || len(deployment.Connection.Direct) < 1 {
-		return fmt.Errorf("failed to get connection string")
-	}
-
-	dbEngine, err := b.DBEngineProvider.GetDBEngine(deploymentMeta.Type)
-	if err != nil {
-		return err
-	}
-	credentials, err := dbEngine.ParseConnectionString(deployment)
+	dbEngine, err := b.DBEngineProvider.GetDBEngine(deployment)
 	if err != nil {
 		return err
 	}
 
-	err = dbEngine.Open(credentials)
-	if err != nil {
-		return err
-	}
-
-	defer dbEngine.Close()
-
-	return dbEngine.DropUser(instanceID, bindingID, deployment)
+	return dbEngine.RevokeCredentials(instanceID, bindingID)
 }
 
 func (b *Broker) Update(context context.Context, instanceID string, details brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.UpdateServiceSpec, error) {

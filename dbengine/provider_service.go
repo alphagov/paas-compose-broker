@@ -3,6 +3,8 @@ package dbengine
 import (
 	"fmt"
 	"strings"
+
+	composeapi "github.com/compose/gocomposeapi"
 )
 
 type ProviderService struct{}
@@ -11,15 +13,15 @@ func NewProviderService() *ProviderService {
 	return &ProviderService{}
 }
 
-func (p *ProviderService) GetDBEngine(engine string) (DBEngine, error) {
-	switch strings.ToLower(engine) {
+func (p *ProviderService) GetDBEngine(deployment *composeapi.Deployment) (DBEngine, error) {
+	switch strings.ToLower(deployment.Type) {
 	case "mongodb":
-		return NewMongoEngine(), nil
+		return NewMongoEngine(deployment), nil
 	case "redis":
-		return NewRedisEngine(), nil
+		return NewRedisEngine(deployment), nil
 	case "elastic_search":
-		return NewElasticSearchEngine(), nil
+		return NewElasticSearchEngine(deployment), nil
+	default:
+		return nil, fmt.Errorf("DB Engine '%s' not supported", deployment.Type)
 	}
-
-	return nil, fmt.Errorf("DB Engine '%s' not supported", engine)
 }
