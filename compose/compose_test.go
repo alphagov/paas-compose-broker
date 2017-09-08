@@ -3,12 +3,9 @@ package compose
 import (
 	"errors"
 
-	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
-
-var clusters []composeapi.Cluster
 
 var _ = Describe("Compose", func() {
 	Describe("squashErrors", func() {

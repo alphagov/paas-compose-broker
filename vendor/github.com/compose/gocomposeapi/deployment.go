@@ -33,6 +33,7 @@ type Deployment struct {
 	Connection          ConnectionStrings `json:"connection_strings,omitempty"`
 	Notes               string            `json:"notes,omitempty"`
 	CustomerBillingCode string            `json:"customer_billing_code,omitempty"`
+	Version             string            `json:"version,omitempty"`
 	Links               Links             `json:"_links"`
 }
 
@@ -68,17 +69,36 @@ type CreateDeploymentParams struct {
 	Deployment DeploymentParams `json:"deployment"`
 }
 
+type patchDeployment struct {
+	DeploymentID string                `json:"-"`
+	Deployment   patchDeploymentParams `json:"deployment"`
+}
+
+type patchDeploymentParams struct {
+	Notes               string `json:"notes,omitempty"`
+	CustomerBillingCode string `json:"customer_billing_code,omitempty"`
+}
+
+// PatchDeploymentParams is used to pass parameters to PatchDeployment
+type PatchDeploymentParams struct {
+	DeploymentID        string `json:"omit"`
+	Notes               string `json:"notes,omitempty"`
+	CustomerBillingCode string `json:"customer_billing_code,omitempty"`
+}
+
 // DeploymentParams core parameters for a new deployment
 type DeploymentParams struct {
-	Name         string `json:"name"`
-	AccountID    string `json:"account_id"`
-	ClusterID    string `json:"cluster_id,omitempty"`
-	Datacenter   string `json:"datacenter,omitempty"`
-	DatabaseType string `json:"type"`
-	Version      string `json:"version,omitempty"`
-	Units        int    `json:"units,omitempty"`
-	SSL          bool   `json:"ssl,omitempty"`
-	WiredTiger   bool   `json:"wired_tiger,omitempty"`
+	Name                string `json:"name"`
+	AccountID           string `json:"account_id"`
+	ClusterID           string `json:"cluster_id,omitempty"`
+	Datacenter          string `json:"datacenter,omitempty"`
+	DatabaseType        string `json:"type"`
+	Version             string `json:"version,omitempty"`
+	Units               int    `json:"units,omitempty"`
+	SSL                 bool   `json:"ssl,omitempty"`
+	WiredTiger          bool   `json:"wired_tiger,omitempty"`
+	Notes               string `json:"notes,omitempty"`
+	CustomerBillingCode string `json:"customer_billing_code,omitempty"`
 }
 
 //VersionTransition a struct wrapper for version transition information
@@ -93,6 +113,14 @@ type versionsResponse struct {
 	Embedded struct {
 		VersionTransitions []VersionTransition `json:"transitions"`
 	} `json:"_embedded"`
+}
+
+type patchDeploymentVersionParams struct {
+	Deployment deploymentVersion `json:"deployment"`
+}
+
+type deploymentVersion struct {
+	Version string `json:"version"`
 }
 
 //CreateDeploymentJSON performs the call
@@ -181,7 +209,7 @@ func (c *Client) GetDeploymentByName(deploymentName string) (*Deployment, []erro
 
 	for _, deployment := range *deployments {
 		if deployment.Name == deploymentName {
-			return &deployment, nil
+			return c.GetDeployment(deployment.ID)
 		}
 	}
 
@@ -224,4 +252,49 @@ func (c *Client) DeprovisionDeployment(deploymentID string) (*Recipe, []error) {
 	json.Unmarshal([]byte(body), &deprovrecipe)
 
 	return &deprovrecipe, nil
+}
+
+//PatchDeploymentJSON performs the call
+func (c *Client) PatchDeploymentJSON(params PatchDeploymentParams) (string, []error) {
+
+	patchParams := patchDeployment{DeploymentID: params.DeploymentID,
+		Deployment: patchDeploymentParams{
+			CustomerBillingCode: params.CustomerBillingCode,
+			Notes:               params.Notes,
+		}}
+
+	response, body, errs := gorequest.New().Patch(apibase+"deployments/"+patchParams.DeploymentID).
+		Set("Authorization", "Bearer "+c.apiToken).
+		Set("Content-type", "application/json; charset=utf-8").
+		Send(patchParams).
+		End()
+
+	if response.StatusCode != 200 { // Expect Accepted on success - assume error on anything else
+		myerrors := Errors{}
+		err := json.Unmarshal([]byte(body), &myerrors)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d - body %s", response.StatusCode, response.Body))
+		} else {
+			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
+		}
+	}
+
+	return body, errs
+}
+
+//PatchDeployment patches a deployment
+func (c *Client) PatchDeployment(params PatchDeploymentParams) (*Deployment, []error) {
+
+	// This is a POST not a GET, so it builds its own request
+
+	body, errs := c.PatchDeploymentJSON(params)
+
+	if errs != nil {
+		return nil, errs
+	}
+
+	deployed := Deployment{}
+	json.Unmarshal([]byte(body), &deployed)
+
+	return &deployed, nil
 }

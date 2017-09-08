@@ -19,61 +19,62 @@ const (
 )
 
 type MongoEngine struct {
-	session *mgo.Session
+	deployment *composeapi.Deployment
 }
 
-func NewMongoEngine() *MongoEngine {
-	return &MongoEngine{}
+func NewMongoEngine(deployment *composeapi.Deployment) *MongoEngine {
+	return &MongoEngine{deployment}
 }
 
-func (m *MongoEngine) CreateUser(instanceID, bindingID string, deployment *composeapi.Deployment) (*Credentials, error) {
-	var err error
+func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
 
-	credentials := &Credentials{}
-	credentials.Name = makeDatabaseName(instanceID)
-	credentials.Username = makeUserName(bindingID)
-	credentials.Password, err = makeRandomPassword(passwordLength)
+	masterCredentials, err := e.getMasterCredentials()
 	if err != nil {
-		return credentials, err
+		return nil, err
+	}
+	session, err := newMongoSession(masterCredentials)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+
+	dbname := makeDatabaseName(instanceID)
+	username := makeUserName(bindingID)
+	password, err := makeRandomPassword(passwordLength)
+	if err != nil {
+		return nil, err
 	}
 
-	if m.session == nil {
-		return nil, fmt.Errorf("session: not open")
-	}
-
-	err = m.session.DB(credentials.Name).UpsertUser(&mgo.User{
-		Username: credentials.Username,
-		Password: credentials.Password,
+	err = session.DB(dbname).UpsertUser(&mgo.User{
+		Username: username,
+		Password: password,
 		Roles:    []mgo.Role{mgo.RoleReadWrite},
 	})
 	if err != nil {
-		return credentials, err
+		return nil, err
 	}
 
-	rootCredentials, err := m.ParseConnectionString(deployment)
-	if err != nil {
-		return credentials, err
-	}
-
-	credentials.Host = rootCredentials.Host
-	credentials.Port = rootCredentials.Port
-	mongoURI := url.URL{
-		Scheme: "mongodb",
-		User:   url.UserPassword(credentials.Username, credentials.Password),
-		Host:   credentials.Host + ":" + credentials.Port,
-		Path:   credentials.Name,
-	}
-	credentials.URI = mongoURI.String()
-	credentials.CACertificateBase64 = deployment.CACertificateBase64
-
-	return credentials, nil
+	return &Credentials{
+		Host:     masterCredentials.Host,
+		Port:     masterCredentials.Port,
+		Name:     dbname,
+		Username: username,
+		Password: password,
+		URI: (&url.URL{
+			Scheme: "mongodb",
+			User:   url.UserPassword(username, password),
+			Host:   masterCredentials.Host + ":" + masterCredentials.Port,
+			Path:   dbname,
+		}).String(),
+		CACertificateBase64: e.deployment.CACertificateBase64,
+	}, nil
 }
 
-func (m *MongoEngine) Open(credentials *Credentials) error {
+func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
 	roots := x509.NewCertPool()
 	ca, err := base64.StdEncoding.DecodeString(credentials.CACertificateBase64)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	roots.AppendCertsFromPEM(ca)
@@ -92,25 +93,30 @@ func (m *MongoEngine) Open(credentials *Credentials) error {
 		},
 	}
 
-	m.session, err = mgo.DialWithInfo(&dialInfo)
-
-	return err
+	return mgo.DialWithInfo(&dialInfo)
 }
 
-func (m *MongoEngine) Close() {
-	m.session.Close()
+func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
+	masterCredentials, err := e.getMasterCredentials()
+	if err != nil {
+		return err
+	}
+	session, err := newMongoSession(masterCredentials)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
 }
 
-func (m *MongoEngine) DropUser(instanceID, bindingID string, deployment *composeapi.Deployment) error {
-	return m.session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
-}
-
-func (m *MongoEngine) ParseConnectionString(deployment *composeapi.Deployment) (*Credentials, error) {
-	if deployment == nil {
+func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
+	if e.deployment == nil {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
+	} else if len(e.deployment.Connection.Direct) < 1 {
+		return nil, fmt.Errorf("failed to get connection string")
 	}
 
-	mongoURL, err := url.Parse(deployment.Connection.Direct[0])
+	mongoURL, err := url.Parse(e.deployment.Connection.Direct[0])
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +132,6 @@ func (m *MongoEngine) ParseConnectionString(deployment *composeapi.Deployment) (
 		Username:            mongoURL.User.Username(),
 		Password:            password,
 		Name:                strings.Split(mongoURL.EscapedPath(), "/")[1],
-		CACertificateBase64: deployment.CACertificateBase64,
+		CACertificateBase64: e.deployment.CACertificateBase64,
 	}, nil
 }

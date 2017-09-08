@@ -1,5 +1,7 @@
 package dbengine
 
+import composeapi "github.com/compose/gocomposeapi"
+
 type Provider interface {
-	GetDBEngine(engine string) (DBEngine, error)
+	GetDBEngine(*composeapi.Deployment) (DBEngine, error)
 }

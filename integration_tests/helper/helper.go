@@ -270,79 +270,11 @@ func NewService(serviceID string, planID string) (s *ServiceHelper) {
 		Provider: dbengine.NewProviderService(),
 	}
 	Expect(s.Cfg.APIToken).NotTo(BeEmpty(), "Please export $COMPOSE_API_KEY")
-	var err error
-	s.Catalog, err = catalog.Load(strings.NewReader(`{
-		"services": [{
-			"id": "36f8bf47-c9e7-46d9-880f-5dfc838d05cb",
-			"name": "mongodb",
-			"description": "Compose MongoDB instance",
-			"requires": [],
-			"tags": [
-			"mongo",
-			"compose"
-			],
-			"metadata": {
-				"displayName": "MongoDB",
-				"imageUrl": "https://webassets.mongodb.com/_com_assets/cms/MongoDB-Logo-5c3a7405a85675366beb3a5ec4c032348c390b3f142f5e6dddf1d78e2df5cb5c.png",
-				"longDescription": "Compose MongoDB instance",
-				"providerDisplayName": "GOV.UK PaaS",
-				"documentationUrl": "https://compose.com/mongodb",
-				"supportUrl": "https://www.cloud.service.gov.uk/support.html"
-			},
-			"plans": [{
-				"id": "fdfd4fc1-ce69-451c-a436-c2e2795b9abe",
-				"name": "small",
-				"description": "1GB Storage / 102MB RAM at $35.00/month.",
-				"compose": {
-					"databaseType": "mongodb",
-					"units": 1
-				},
-				"metadata": {
-					"displayName": "Mongo Small",
-					"bullets": [],
-					"costs": [{
-						"amount": {
-							"USD": 35
-						},
-						"unit": "MONTHLY"
-					}]
-				}
-			}]
-		},{
-			"id": "6e9202f2-c2e1-4de8-8d4a-a8c898fc2d8c",
-			"name": "elasticsearch",
-			"bindable": true,
-			"description": "Compose Elasticsearch instance",
-			"requires": [],
-			"tags": [
-			"elasticsearch",
-			"compose"
-			],
-			"metadata": {
-				"displayName": "Elasticsearch",
-				"imageUrl": "https://static-www.elastic.co/assets/blt9a26f88bfbd20eb5/icon-elasticsearch-bb.svg",
-				"longDescription": "Compose Elasticsearch instance",
-				"providerDisplayName": "GOV.UK PaaS",
-				"documentationUrl": "https://compose.com/databases/elasticsearch",
-				"supportUrl": "https://www.cloud.service.gov.uk/support.html"
-			},
-			"plans": [{
-				"id": "6d051078-0913-403c-9763-1d03ecee50d9",
-				"name": "tiny",
-				"description": "2GB Storage / 2048MB RAM.",
-				"compose": {
-					"databaseType": "elastic_search",
-					"units": 1
-				},
-				"metadata": {
-					"displayName": "Elasticsearch Tiny",
-					"bullets": []
-				}
-			}]
-		}]
-	}`))
+	b, err := ioutil.ReadFile("./../examples/catalog.json")
+	Expect(err).NotTo(HaveOccurred())
+	s.Catalog, err = catalog.Load(bytes.NewReader(b))
 	Expect(err).ToNot(HaveOccurred())
-	Expect(len(s.Catalog.Services)).To(Equal(2))
+	Expect(len(s.Catalog.Services)).To(BeNumerically(">", 0))
 
 	s.ComposeClient, err = compose.NewClient(s.Cfg.APIToken)
 	Expect(err).NotTo(HaveOccurred())
