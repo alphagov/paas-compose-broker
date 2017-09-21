@@ -14,7 +14,7 @@ run:
     - -e
     - -c
     - |
-      export COMPOSE_API_KEY=$(awk -F':' '$1 ~ /compose_access_token/ {print $2}' ./secrets/compose-broker-secrets.yml)
+      export COMPOSE_API_KEY=$(awk -F':' '$1 ~ /compose_access_token/ {print $2}' "./secrets/$SECRETS_FILE")
       mkdir -p "${GOPATH}/src/github.com/alphagov/paas-compose-broker"
       cp -r  repo/* "${GOPATH}/src/github.com/alphagov/paas-compose-broker/"
       cd "${GOPATH}/src/github.com/alphagov/paas-compose-broker"
