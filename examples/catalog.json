@@ -73,7 +73,7 @@
       "compose": {
         "units": 1,
         "databaseType": "redis",
-        "cache_mode": true
+        "cacheMode": true
       },
       "metadata": {
         "displayName": "Redis Tiny Cache",
