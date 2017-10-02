@@ -21,7 +21,7 @@ type Plan struct {
 type ComposeConfig struct {
 	Units        int    `json:"units"`
 	DatabaseType string `json:"databaseType"`
-	CacheMode    bool   `json:"cache_mode"`
+	CacheMode    bool   `json:"cacheMode"`
 }
 
 type Catalog struct {
