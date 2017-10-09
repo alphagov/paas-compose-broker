@@ -22,6 +22,15 @@ const (
 		        "units": 1,
 		        "databaseType": "DATABASE_TYPE"
 		      }
+		    }, {
+		      "id": "ZZZZ-ZZZZ-ZZZZ-ZZZZ",
+		      "name": "CACHE_PLAN_NAME",
+		      "description": "CACHE_DATABASE_DESCRIPTION",
+		      "compose": {
+		        "units": 1,
+		        "databaseType": "CACHE_DATABASE_TYPE",
+		        "cacheMode": true
+		      }
 		    }]
 		  }]
 		}
@@ -61,6 +70,10 @@ var _ = Describe("catalog", func() {
 	It("should have a plan with compose config set", func() {
 		Expect(catalog.Services[0].Plans[0].Compose.Units).To(Equal(1), "expected units set")
 		Expect(catalog.Services[0].Plans[0].Compose.DatabaseType).To(Equal("DATABASE_TYPE"), "expected a databaseType set")
+	})
+
+	It("should have a caching plan", func() {
+		Expect(catalog.Services[0].Plans[1].Compose.CacheMode).To(Equal(true), "expected cache mode to be true")
 	})
 
 	It("should expose the embedded brokerapi.Service type", func() {

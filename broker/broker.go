@@ -116,6 +116,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		Datacenter:   ComposeDatacenter,
 		DatabaseType: plan.Compose.DatabaseType,
 		Units:        plan.Compose.Units,
+		CacheMode:    plan.Compose.CacheMode,
 		SSL:          true,
 		ClusterID:    b.ClusterID,
 	}

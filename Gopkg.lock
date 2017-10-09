@@ -7,10 +7,11 @@
   revision = "dfcbcba2dd4a5228c43b0292d219d5c010daed3a"
 
 [[projects]]
+  branch = "150853452-redis-cache"
   name = "github.com/compose/gocomposeapi"
   packages = ["."]
-  revision = "bdc1491a47001b445cc387edc3849ff6ec25c05c"
-  version = "0.2.0"
+  revision = "38669947e9894487fc79349cf443c78ed0aee7cb"
+  source = "https://github.com/alphagov/paas-gocomposeapi.git"
 
 [[projects]]
   name = "github.com/garyburd/redigo"
@@ -105,6 +106,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7b651cdcf60632aacc94d7926919ff4f7db70cbe7f6b877cf53ee906ed3d270b"
+  inputs-digest = "ee21886b33e2166fc27a2be0ba6adefdbb27312a28bca9f19a556a6325f8a955"
   solver-name = "gps-cdcl"
   solver-version = 1
