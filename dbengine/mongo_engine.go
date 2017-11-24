@@ -97,12 +97,16 @@ func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
 }
 
 func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
+	fmt.Printf("DEPLOYMENT: %+v\n", e.deployment)
 	masterCredentials, err := e.getMasterCredentials()
+	fmt.Printf("MASTER CREDS: %+v\n", masterCredentials)
 	if err != nil {
+		fmt.Println("Failed to parse master credentials")
 		return err
 	}
 	session, err := newMongoSession(masterCredentials)
 	if err != nil {
+		fmt.Println("Failed to create new Mongo session")
 		return err
 	}
 	defer session.Close()
