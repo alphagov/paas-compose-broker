@@ -8,6 +8,8 @@ image_resource:
 inputs:
   - name: repo
   - name: secrets
+params:
+  SECRETS_FILE:
 run:
   path: sh
   args:
