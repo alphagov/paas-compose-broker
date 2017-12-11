@@ -87,6 +87,7 @@ func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
 		Timeout:  10 * time.Second,
 		Username: credentials.Username,
 		Password: credentials.Password,
+		Source:   credentials.AuthSource,
 		DialServer: func(addr *mgo.ServerAddr) (net.Conn, error) {
 			conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
 			return conn, err
@@ -114,6 +115,8 @@ func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
 	} else if len(e.deployment.Connection.Direct) < 1 {
 		return nil, fmt.Errorf("failed to get connection string")
+	} else if e.deployment.Connection.Direct[0] == "" {
+		return nil, fmt.Errorf("connection string is empty")
 	}
 
 	mongoURL, err := url.Parse(e.deployment.Connection.Direct[0])
@@ -133,5 +136,6 @@ func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
 		Password:            password,
 		Name:                strings.Split(mongoURL.EscapedPath(), "/")[1],
 		CACertificateBase64: e.deployment.CACertificateBase64,
+		AuthSource:          mongoURL.Query().Get("authSource"),
 	}, nil
 }
