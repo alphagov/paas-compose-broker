@@ -8,6 +8,7 @@ type Credentials struct {
 	Password            string `json:"password"`
 	URI                 string `json:"uri"`
 	CACertificateBase64 string `json:"ca_certificate_base64"`
+	AuthSource          string `json:"auth_source"`
 }
 
 type DBEngine interface {
