@@ -80,7 +80,7 @@ var _ = Describe("Broker Compose Integration", func() {
 				_, err := conn.Do("DEL", "hello")
 				Expect(err).ToNot(HaveOccurred())
 				ok, _ := redis.Bool(conn.Do("EXISTS", "hello"))
-				Expect(ok).To(Equal(false))
+				Expect(ok).To(Equal(true))
 			})
 
 		})
