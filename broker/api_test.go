@@ -144,7 +144,7 @@ var _ = Describe("Broker API", func() {
 
 		fakeDBProvider := enginefakes.FakeProvider{}
 
-		fakeBroker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.Catalog{
+		broker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.Catalog{
 			Services: []*catalog.Service{
 				{
 					Plans: []*catalog.Plan{
@@ -164,10 +164,14 @@ var _ = Describe("Broker API", func() {
 		}, logger)
 		Expect(err).NotTo(HaveOccurred())
 
-		brokerAPI = brokerapi.New(fakeBroker, logger, brokerapi.BrokerCredentials{
-			Username: cfg.Username,
-			Password: cfg.Password,
-		})
+		brokerAPI = brokerapi.New(
+			broker,
+			logger,
+			brokerapi.BrokerCredentials{
+				Username: cfg.Username,
+				Password: cfg.Password,
+			},
+		)
 	})
 
 	Describe("Fetching the catalog", func() {
