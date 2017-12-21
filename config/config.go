@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -71,9 +70,12 @@ func New() (*Config, error) {
 	c.ClusterName = os.Getenv("CLUSTER_NAME")
 
 	whitelist, err := ParseIPWhitelist(os.Getenv("IP_WHITELIST"))
+	if err != nil {
+		return nil, err
+	}
 	c.IPWhitelist = whitelist
 
-	return c, err
+	return c, nil
 }
 
 func ParseIPWhitelist(ips string) ([]string, error) {
@@ -83,7 +85,7 @@ func ParseIPWhitelist(ips string) ([]string, error) {
 	outIPs := []string{}
 	for _, ip := range strings.Split(ips, ",") {
 		if len(strings.Split(ip, ".")) != 4 {
-			return []string{}, errors.New("malformed IP whitelist")
+			return []string{}, fmt.Errorf("malformed whitelist IP: %v", ip)
 		}
 		outIPs = append(outIPs, ip)
 	}

@@ -1,28 +1,12 @@
 package dbengine
 
 import (
-	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
-	"github.com/alphagov/paas-compose-broker/compose/fakes"
 )
 
 var _ = Describe("Broker utility functions", func() {
-
 	Describe("findDeployment", func() {
-		var (
-			fakeComposeClient *fakes.FakeComposeClient
-		)
-
-		BeforeEach(func() {
-			fakeComposeClient = fakes.New()
-			fakeComposeClient.Deployments = []composeapi.Deployment{
-				{ID: "1234", Name: "one"},
-				{ID: "2345", Name: "two"},
-			}
-		})
-
 		Describe("makeUserName", func() {
 			It("can make a user name", func() {
 				userName := makeUserName("62a334e8-5afa-7c41-92a3-a44b18eba448")

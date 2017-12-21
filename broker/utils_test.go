@@ -13,54 +13,50 @@ import (
 var _ = Describe("Broker utility functions", func() {
 
 	Describe("findDeployment", func() {
-		var (
-			fakeComposeClient *fakes.FakeComposeClient
-		)
-
-		BeforeEach(func() {
-			fakeComposeClient = fakes.New()
-			fakeComposeClient.Deployments = []composeapi.Deployment{
-				{ID: "1234", Name: "one"},
-				{ID: "2345", Name: "two"},
-			}
-		})
-
 		It("returns the deployment if present", func() {
-			d, err := findDeployment(fakeComposeClient, "two")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(d.ID).To(Equal("2345"))
-			Expect(d.Name).To(Equal("two"))
+			fakeComposeClient := &fakes.FakeClient{}
+			deployment := &composeapi.Deployment{ID: "2345", Name: "two"}
+			fakeComposeClient.GetDeploymentByNameReturns(deployment, []error{})
+
+			Expect(findDeployment(fakeComposeClient, "two")).To(Equal(deployment))
 		})
 
 		It("returns a errDeploymentNotFound if the deployment doesn't exist", func() {
+			fakeComposeClient := &fakes.FakeClient{}
+			fakeComposeClient.GetDeploymentByNameReturns(nil, []error{errors.New("deployment not found")})
+
 			_, err := findDeployment(fakeComposeClient, "non-existent")
+
 			Expect(err).To(Equal(errDeploymentNotFound))
 		})
 
 		It("returns all other errors", func() {
-			fakeComposeClient.GlobalError = errors.New("computer says no")
+			fakeComposeClient := &fakes.FakeClient{}
+			fakeComposeClient.GetDeploymentByNameReturns(nil, []error{errors.New("computer says no")})
+
 			_, err := findDeployment(fakeComposeClient, "one")
-			Expect(err).To(Equal(fakeComposeClient.GlobalError))
+
+			Expect(err).To(MatchError("computer says no"))
 		})
 	})
 
 	Describe("makeOperationData", func() {
 		It("can make operation data JSON", func() {
-			operationData, err := makeOperationData("expected_type", "123")
+			operationData, err := makeOperationData("expected_type", "123", []string{"1.1.1.1"})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(operationData).To(Equal(`{"recipe_id":"123","type":"expected_type"}`))
+			Expect(operationData).To(Equal(`{"type":"expected_type","recipe_id":"123","whitelist_recipe_ids":["1.1.1.1"]}`))
 		})
 	})
 
 	Describe("makeInstanceName", func() {
 		It("can make an instance name", func() {
-			instanceName, err := makeInstanceName("test", "15e332e8-4afa-4c41-82a3-f44b18eba448")
+			instanceName, err := MakeInstanceName("test", "15e332e8-4afa-4c41-82a3-f44b18eba448")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(instanceName).To(Equal("test-15e332e8-4afa-4c41-82a3-f44b18eba448"))
 		})
 
 		It("can trim spaces from dbprefix", func() {
-			instanceName, err := makeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
+			instanceName, err := MakeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(instanceName).To(Equal("trim-spaces-0f38f9c2-085c-41ec-87bf-e38b72f7fdaa"))
 		})

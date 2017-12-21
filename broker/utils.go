@@ -24,11 +24,12 @@ func findDeployment(c compose.Client, name string) (*composeapi.Deployment, erro
 	return deployment, nil
 }
 
-func makeOperationData(operationType, recipeID string) (string, error) {
+func makeOperationData(operationType, recipeID string, whitelistRecipeIDs []string) (string, error) {
 
 	operationData := OperationData{
-		Type:     operationType,
-		RecipeID: recipeID,
+		Type:               operationType,
+		RecipeID:           recipeID,
+		WhitelistRecipeIDs: whitelistRecipeIDs,
 	}
 
 	data, err := json.Marshal(operationData)
@@ -39,7 +40,7 @@ func makeOperationData(operationType, recipeID string) (string, error) {
 	return string(data), nil
 }
 
-func makeInstanceName(dbPrefix, instanceID string) (string, error) {
+func MakeInstanceName(dbPrefix, instanceID string) (string, error) {
 	if dbPrefix == "" {
 		return "", errors.New("dbPrefix can't be empty")
 	}
