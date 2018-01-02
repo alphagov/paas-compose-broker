@@ -23,7 +23,8 @@
 
 [[constraint]]
   name = "github.com/compose/gocomposeapi"
-  version = "~0.2.0"
+  source = "github.com/alphagov/paas-gocomposeapi"
+  branch = "gds_master"
 
 [[constraint]]
   name = "github.com/garyburd/redigo"

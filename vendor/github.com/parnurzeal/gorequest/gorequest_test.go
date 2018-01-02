@@ -1063,7 +1063,6 @@ func TestMultipartRequest(t *testing.T) {
 		Type("multipart").
 		Query("query1=test").
 		Query("query2=test").
-		Send("foo").
 		End()
 
 	New().Post(ts.URL + case5_send_struct).
