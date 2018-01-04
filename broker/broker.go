@@ -136,6 +136,20 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, compose.SquashErrors(errs)
 	}
 
+	ok := false
+	defer func() {
+		if !ok {
+			_, errs := b.Compose.DeprovisionDeployment(deployment.ID)
+			for _, err := range errs {
+				b.Logger.Error("failed-deprovision", err, lager.Data{
+					instanceIDLogKey:   instanceID,
+					detailsLogKey:      details,
+					asyncAllowedLogKey: asyncAllowed,
+				})
+			}
+		}
+	}()
+
 	whitelistRecipeIDs := []string{}
 	for _, ip := range b.Config.IPWhitelist {
 		whitelistParams := composeapi.DeploymentWhitelistParams{
@@ -161,6 +175,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 	}
 
 	spec.OperationData = operationData
+	ok = true
 
 	return spec, nil
 }

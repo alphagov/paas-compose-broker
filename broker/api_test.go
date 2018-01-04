@@ -273,9 +273,13 @@ var _ = Describe("Broker API", func() {
 				IP:          "3.3.3.3",
 				Description: "Allow 3.3.3.3 to access deployment",
 			}))
+
+			By("not deprovisioning, as would happen in an error situation")
+			Expect(fakeComposeClient.DeprovisionDeploymentCallCount()).
+				To(Equal(0))
 		})
 
-		It("500s if any of the whitelist entry requests fail", func() {
+		It("500s and deprovisions if any of the whitelist entry requests fail", func() {
 			instanceID := uuid.NewV4().String()
 			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
 
@@ -305,6 +309,8 @@ var _ = Describe("Broker API", func() {
 			Expect(resp.Code).To(Equal(500))
 			Expect(string(body)).
 				To(MatchJSON(`{"description":"malformed response from Compose: no pending whitelist recipe received"}`))
+			Expect(fakeComposeClient.DeprovisionDeploymentArgsForCall(0)).
+				To(Equal("1"))
 		})
 
 		It("500s if any of the whitelist recipes are nil", func() {
