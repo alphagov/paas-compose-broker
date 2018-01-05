@@ -36,7 +36,7 @@ var _ = Describe("Broker Compose Integration", func() {
 		It("should support the full instance lifecycle", func() {
 
 			By("initializing service from catalog", func() {
-				service = helper.NewService(mongoServiceID, mongoPlanID)
+				service = helper.NewService(mongoServiceID, mongoPlanID, []string{})
 			})
 
 			By("provisioning a service", func() {

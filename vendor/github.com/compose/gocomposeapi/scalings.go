@@ -16,19 +16,17 @@ package composeapi
 
 import (
 	"encoding/json"
-	"fmt"
-
-	"github.com/parnurzeal/gorequest"
 )
 
 // Scalings represents the used, allocated, starting and minimum unit scale
 // of a deployment
 type Scalings struct {
-	AllocatedUnits int `json:"allocated_units"`
-	UsedUnits      int `json:"used_units"`
-	StartingUnits  int `json:"starting_units"`
-	MinimumUnits   int `json:"minimum_units"`
-	UnitSizeInMB   int `json:"unit_size_in_mb"`
+	AllocatedUnits int    `json:"allocated_units"`
+	UsedUnits      int    `json:"used_units"`
+	StartingUnits  int    `json:"starting_units"`
+	MinimumUnits   int    `json:"minimum_units"`
+	UnitSizeInMB   int    `json:"unit_size_in_mb"`
+	UnitType       string `json:"unit_type"`
 }
 
 //ScalingsParams represents the parameters needed to scale a deployment
@@ -71,20 +69,12 @@ func (c *Client) SetScalingsJSON(params ScalingsParams) (string, []error) {
 		Deployment: scalingSettingParams{Units: params.Units},
 	}
 
-	response, body, errs := gorequest.New().Post(apibase+"deployments/"+params.DeploymentID+"/scalings").
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("POST", apibase+"deployments/"+params.DeploymentID+"/scalings").
 		Send(scalingsparams).
 		End()
 
 	if response.StatusCode != 200 { // Expect Accepted on success - assume error on anything else
-		myerrors := Errors{}
-		err := json.Unmarshal([]byte(body), &myerrors)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d - body %s", response.StatusCode, response.Body))
-		} else {
-			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
-		}
+		errs = ProcessErrors(response.StatusCode, body)
 	}
 
 	return body, errs

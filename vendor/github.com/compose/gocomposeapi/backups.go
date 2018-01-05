@@ -16,9 +16,6 @@ package composeapi
 
 import (
 	"encoding/json"
-	"fmt"
-
-	"github.com/parnurzeal/gorequest"
 )
 
 // Backup structure
@@ -60,19 +57,11 @@ func (c *Client) GetBackupsForDeployment(deploymentid string) (*[]Backup, []erro
 
 //StartBackupForDeploymentJSON starts backup and returns JSON response
 func (c *Client) StartBackupForDeploymentJSON(deploymentid string) (string, []error) {
-	response, body, errs := gorequest.New().Post(apibase+"deployments/"+deploymentid+"/backups").
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("POST", apibase+"deployments/"+deploymentid+"/backups").
 		End()
 
 	if response.StatusCode != 202 { // Expect Accepted on success - assume error on anything else
-		myerrors := Errors{}
-		err := json.Unmarshal([]byte(body), &myerrors)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d", response.StatusCode))
-		} else {
-			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
-		}
+		errs = ProcessErrors(response.StatusCode, body)
 	}
 
 	return body, errs
@@ -148,20 +137,12 @@ func (c *Client) RestoreBackupJSON(params RestoreBackupParams) (string, []error)
 		},
 	}
 
-	response, body, errs := gorequest.New().Post(apibase+"deployments/"+params.DeploymentID+"/backups/"+params.BackupID+"/restore").
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("POST", apibase+"deployments/"+params.DeploymentID+"/backups/"+params.BackupID+"/restore").
 		Send(backupparams).
 		End()
 
 	if response.StatusCode != 202 { // Expect Accepted on success - assume error on anything else
-		myerrors := Errors{}
-		err := json.Unmarshal([]byte(body), &myerrors)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d - body %s", response.StatusCode, response.Body))
-		} else {
-			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
-		}
+		errs = ProcessErrors(response.StatusCode, body)
 	}
 
 	return body, errs

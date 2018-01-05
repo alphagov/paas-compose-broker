@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -68,7 +67,7 @@ type SuperAgent struct {
 	BasicAuth         struct{ Username, Password string }
 	Debug             bool
 	CurlCommand       bool
-	logger            Logger
+	logger            *log.Logger
 	Retryable         struct {
 		RetryableStatus []int
 		RetryerTime     time.Duration
@@ -125,7 +124,7 @@ func (s *SuperAgent) SetCurlCommand(enable bool) *SuperAgent {
 	return s
 }
 
-func (s *SuperAgent) SetLogger(logger Logger) *SuperAgent {
+func (s *SuperAgent) SetLogger(logger *log.Logger) *SuperAgent {
 	s.logger = logger
 	return s
 }
@@ -1089,28 +1088,14 @@ func (s *SuperAgent) getResponseBytes() (Response, []byte, []error) {
 
 func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 	var (
-		req           *http.Request
-		contentType   string // This is only set when the request body content is non-empty.
-		contentReader io.Reader
-		err           error
+		req *http.Request
+		err error
 	)
 
 	if s.Method == "" {
 		return nil, errors.New("No method specified")
 	}
 
-	// !!! Important Note !!!
-	//
-	// Throughout this region, contentReader and contentType are only set when
-	// the contents will be non-empty.
-	// This is done avoid ever sending a non-nil request body with nil contents
-	// to http.NewRequest, because it contains logic which dependends on
-	// whether or not the body is "nil".
-	//
-	// See PR #136 for more information:
-	//
-	//     https://github.com/parnurzeal/gorequest/pull/136
-	//
 	if s.TargetType == "json" {
 		// If-case to give support to json array. we check if
 		// 1) Map only: send it as json map from s.Data
@@ -1123,10 +1108,12 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 		} else if len(s.SliceData) != 0 {
 			contentJson, _ = json.Marshal(s.SliceData)
 		}
-		if contentJson != nil {
-			contentReader = bytes.NewReader(contentJson)
-			contentType = "application/json"
+		contentReader := bytes.NewReader(contentJson)
+		req, err = http.NewRequest(s.Method, s.Url, contentReader)
+		if err != nil {
+			return nil, err
 		}
+		req.Header.Set("Content-Type", "application/json")
 	} else if s.TargetType == "form" || s.TargetType == "form-data" || s.TargetType == "urlencoded" {
 		var contentForm []byte
 		if s.BounceToRawString || len(s.SliceData) != 0 {
@@ -1135,25 +1122,22 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 			formData := changeMapToURLValues(s.Data)
 			contentForm = []byte(formData.Encode())
 		}
-		if len(contentForm) != 0 {
-			contentReader = bytes.NewReader(contentForm)
-			contentType = "application/x-www-form-urlencoded"
+		contentReader := bytes.NewReader(contentForm)
+		req, err = http.NewRequest(s.Method, s.Url, contentReader)
+		if err != nil {
+			return nil, err
 		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else if s.TargetType == "text" {
-		if len(s.RawString) != 0 {
-			contentReader = strings.NewReader(s.RawString)
-			contentType = "text/plain"
-		}
+		req, err = http.NewRequest(s.Method, s.Url, strings.NewReader(s.RawString))
+		req.Header.Set("Content-Type", "text/plain")
 	} else if s.TargetType == "xml" {
-		if len(s.RawString) != 0 {
-			contentReader = strings.NewReader(s.RawString)
-			contentType = "application/xml"
-		}
+		req, err = http.NewRequest(s.Method, s.Url, strings.NewReader(s.RawString))
+		req.Header.Set("Content-Type", "application/xml")
 	} else if s.TargetType == "multipart" {
-		var (
-			buf = &bytes.Buffer{}
-			mw  = multipart.NewWriter(buf)
-		)
+
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
 
 		if s.BounceToRawString {
 			fieldName, ok := s.Header["data_fieldname"]
@@ -1162,7 +1146,6 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 			}
 			fw, _ := mw.CreateFormField(fieldName)
 			fw.Write([]byte(s.RawString))
-			contentReader = buf
 		}
 
 		if len(s.Data) != 0 {
@@ -1173,7 +1156,6 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 					fw.Write([]byte(value))
 				}
 			}
-			contentReader = buf
 		}
 
 		if len(s.SliceData) != 0 {
@@ -1192,7 +1174,6 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 				return nil, err
 			}
 			fw.Write(contentJson)
-			contentReader = buf
 		}
 
 		// add the files
@@ -1201,26 +1182,16 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 				fw, _ := mw.CreateFormFile(file.Fieldname, file.Filename)
 				fw.Write(file.Data)
 			}
-			contentReader = buf
 		}
 
 		// close before call to FormDataContentType ! otherwise its not valid multipart
 		mw.Close()
 
-		if contentReader != nil {
-			contentType = mw.FormDataContentType()
-		}
+		req, err = http.NewRequest(s.Method, s.Url, &buf)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
 	} else {
 		// let's return an error instead of an nil pointer exception here
 		return nil, errors.New("TargetType '" + s.TargetType + "' could not be determined")
-	}
-
-	if req, err = http.NewRequest(s.Method, s.Url, contentReader); err != nil {
-		return nil, err
-	}
-
-	if len(contentType) != 0 {
-		req.Header.Set("Content-Type", contentType)
 	}
 
 	for k, v := range s.Header {

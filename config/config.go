@@ -25,6 +25,7 @@ type Config struct {
 	Password    string
 	DBPrefix    string
 	ClusterName string
+	IPWhitelist []string
 }
 
 func New() (*Config, error) {
@@ -68,5 +69,25 @@ func New() (*Config, error) {
 
 	c.ClusterName = os.Getenv("CLUSTER_NAME")
 
+	whitelist, err := ParseIPWhitelist(os.Getenv("IP_WHITELIST"))
+	if err != nil {
+		return nil, err
+	}
+	c.IPWhitelist = whitelist
+
 	return c, nil
+}
+
+func ParseIPWhitelist(ips string) ([]string, error) {
+	if ips == "" {
+		return []string{}, nil
+	}
+	outIPs := []string{}
+	for _, ip := range strings.Split(ips, ",") {
+		if len(strings.Split(ip, ".")) != 4 {
+			return []string{}, fmt.Errorf("malformed whitelist IP: %v", ip)
+		}
+		outIPs = append(outIPs, ip)
+	}
+	return outIPs, nil
 }

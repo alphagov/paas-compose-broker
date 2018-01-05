@@ -7,10 +7,11 @@
   revision = "dfcbcba2dd4a5228c43b0292d219d5c010daed3a"
 
 [[projects]]
+  branch = "gds_master"
   name = "github.com/compose/gocomposeapi"
   packages = ["."]
-  revision = "bdc1491a47001b445cc387edc3849ff6ec25c05c"
-  version = "0.2.0"
+  revision = "3bbf8c7d13c44a5a5059820a6eb0d388ece64a80"
+  source = "github.com/alphagov/paas-gocomposeapi"
 
 [[projects]]
   name = "github.com/garyburd/redigo"
@@ -50,7 +51,8 @@
 [[projects]]
   name = "github.com/parnurzeal/gorequest"
   packages = ["."]
-  revision = "5bf13be198787abbed057fb7c4007f372083a0f5"
+  revision = "a578a48e8d6ca8b01a3b18314c43c6716bb5f5a3"
+  version = "v0.2.15"
 
 [[projects]]
   branch = "master"
@@ -105,6 +107,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7b651cdcf60632aacc94d7926919ff4f7db70cbe7f6b877cf53ee906ed3d270b"
+  inputs-digest = "ebb170b1273ebf9f63fbd0bc8d1e5bc49630265f5cd49ed7d2dbee5572fdc4ac"
   solver-name = "gps-cdcl"
   solver-version = 1

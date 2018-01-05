@@ -1,6 +1,9 @@
 package broker_test
 
 import (
+	"errors"
+	"strings"
+
 	"code.cloudfoundry.org/lager"
 	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
@@ -13,7 +16,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/catalog"
@@ -58,7 +60,7 @@ func DoRequest(server http.Handler, req *http.Request) *httptest.ResponseRecorde
 var _ = Describe("Broker API", func() {
 
 	var (
-		fakeComposeClient *fakes.FakeComposeClient
+		fakeComposeClient *fakes.FakeClient
 		cfg               *config.Config
 		brokerAPI         http.Handler
 		service           = brokerapi.Service{
@@ -106,6 +108,40 @@ var _ = Describe("Broker API", func() {
 				DisplayName: "MongoDB",
 			},
 		}
+
+		buildAPI = func(cfg *config.Config, fakeComposeClient *fakes.FakeClient) http.Handler {
+			logger := lager.NewLogger("compose-broker")
+			logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, cfg.LogLevel))
+
+			broker, err := broker.New(fakeComposeClient, enginefakes.FakeProvider{}, cfg, &catalog.Catalog{
+				Services: []*catalog.Service{
+					{
+						Plans: []*catalog.Plan{
+							{
+								ServicePlan: brokerapi.ServicePlan{
+									ID: service.Plans[0].ID,
+								},
+								Compose: catalog.ComposeConfig{
+									Units:        1,
+									DatabaseType: "fakedb",
+								},
+							},
+						},
+						Service: service,
+					},
+				},
+			}, logger)
+			Expect(err).NotTo(HaveOccurred())
+
+			return brokerapi.New(
+				broker,
+				logger,
+				brokerapi.BrokerCredentials{
+					Username: cfg.Username,
+					Password: cfg.Password,
+				},
+			)
+		}
 	)
 
 	BeforeEach(func() {
@@ -113,14 +149,20 @@ var _ = Describe("Broker API", func() {
 			Username: "jeff",
 			Password: "j3ffers0n",
 			DBPrefix: "test",
+			IPWhitelist: []string{
+				"1.1.1.1",
+				"2.2.2.2",
+				"3.3.3.3",
+			},
 		}
 	})
 
 	JustBeforeEach(func() {
 
-		fakeComposeClient = fakes.New()
-		fakeComposeClient.Account = composeapi.Account{ID: "1"}
-		fakeComposeClient.Deployments = []composeapi.Deployment{
+		fakeComposeClient = &fakes.FakeClient{}
+		fakeComposeClient.GetAccountReturns(&composeapi.Account{ID: "1"}, []error{})
+
+		fakeComposeClient.GetDeploymentsReturns(&[]composeapi.Deployment{
 			{
 				ID:                  "1111",
 				Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, "1111"),
@@ -134,40 +176,15 @@ var _ = Describe("Broker API", func() {
 				Connection: composeapi.ConnectionStrings{Direct: []string{"fakedb://admin:password@host.com:1445/admin?ssl=true"}},
 				Type:       "fakedb",
 			},
-		}
-		fakeComposeClient.Clusters = []composeapi.Cluster{
-			{ID: "1234", Name: cfg.ClusterName},
-		}
+		}, []error{})
+		fakeComposeClient.GetClusterByNameReturns(&composeapi.Cluster{
+			ID: "1234", Name: cfg.ClusterName,
+		}, []error{})
 
 		logger := lager.NewLogger("compose-broker")
 		logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, cfg.LogLevel))
 
-		fakeDBProvider := enginefakes.FakeProvider{}
-
-		fakeBroker, err := broker.New(fakeComposeClient, fakeDBProvider, cfg, &catalog.Catalog{
-			Services: []*catalog.Service{
-				{
-					Plans: []*catalog.Plan{
-						{
-							ServicePlan: brokerapi.ServicePlan{
-								ID: service.Plans[0].ID,
-							},
-							Compose: catalog.ComposeConfig{
-								Units:        1,
-								DatabaseType: "fakedb",
-							},
-						},
-					},
-					Service: service,
-				},
-			},
-		}, logger)
-		Expect(err).NotTo(HaveOccurred())
-
-		brokerAPI = brokerapi.New(fakeBroker, logger, brokerapi.BrokerCredentials{
-			Username: cfg.Username,
-			Password: cfg.Password,
-		})
+		brokerAPI = buildAPI(cfg, fakeComposeClient)
 	})
 
 	Describe("Fetching the catalog", func() {
@@ -198,6 +215,11 @@ var _ = Describe("Broker API", func() {
 
 		It("provisions an instance", func() {
 			instanceID := uuid.NewV4().String()
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
+
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PUT",
 				"/v2/service_instances/"+instanceID,
@@ -214,8 +236,15 @@ var _ = Describe("Broker API", func() {
 			))
 			Expect(resp.Code).To(Equal(202))
 			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
+			Expect(body).To(MatchOperationJSON(`
+			{
+			  "recipe_id":"provision-recipe-id",
+			  "type":"provision",
+			  "whitelist_recipe_ids":["id-for-1.1.1.1","id-for-2.2.2.2","id-for-3.3.3.3"]
+			}
+			`))
 
+			By("creating the deployment")
 			expectedDeploymentParams := composeapi.DeploymentParams{
 				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
 				AccountID:    "1",
@@ -225,11 +254,99 @@ var _ = Describe("Broker API", func() {
 				SSL:          true,
 				ClusterID:    "",
 			}
-			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
+			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
+
+			By("adding all whitelist entries")
+			var args composeapi.DeploymentWhitelistParams
+			_, args = fakeComposeClient.CreateDeploymentWhitelistArgsForCall(0)
+			Expect(args).To(Equal(composeapi.DeploymentWhitelistParams{
+				IP:          "1.1.1.1",
+				Description: "Allow 1.1.1.1 to access deployment",
+			}))
+			_, args = fakeComposeClient.CreateDeploymentWhitelistArgsForCall(1)
+			Expect(args).To(Equal(composeapi.DeploymentWhitelistParams{
+				IP:          "2.2.2.2",
+				Description: "Allow 2.2.2.2 to access deployment",
+			}))
+			_, args = fakeComposeClient.CreateDeploymentWhitelistArgsForCall(2)
+			Expect(args).To(Equal(composeapi.DeploymentWhitelistParams{
+				IP:          "3.3.3.3",
+				Description: "Allow 3.3.3.3 to access deployment",
+			}))
+
+			By("not deprovisioning, as would happen in an error situation")
+			Expect(fakeComposeClient.DeprovisionDeploymentCallCount()).
+				To(Equal(0))
+		})
+
+		It("500s and deprovisions if any of the whitelist entry requests fail", func() {
+			instanceID := uuid.NewV4().String()
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(
+				0, nil, []error{},
+			)
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(
+				1, &composeapi.Recipe{}, []error{errors.New("won't get here")},
+			)
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+instanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": {}
+				}`, service.ID, service.Plans[0].ID)),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+			body := ReadResponseBody(resp.Body)
+
+			Expect(resp.Code).To(Equal(500))
+			Expect(string(body)).
+				To(MatchJSON(`{"description":"malformed response from Compose: no pending whitelist recipe received"}`))
+			Expect(fakeComposeClient.DeprovisionDeploymentArgsForCall(0)).
+				To(Equal("1"))
+		})
+
+		It("500s if any of the whitelist recipes are nil", func() {
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturns(nil, []error{})
+
+			instanceID := uuid.NewV4().String()
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+instanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": {}
+				}`, service.ID, service.Plans[0].ID)),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+			body := ReadResponseBody(resp.Body)
+
+			Expect(resp.Code).To(Equal(500))
+			Expect(string(body)).
+				To(MatchJSON(`{"description":"malformed response from Compose: no pending whitelist recipe received"}`))
 		})
 
 		It("ignores user provided parameters", func() {
 			instanceID := uuid.NewV4().String()
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
+
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PUT",
 				"/v2/service_instances/"+instanceID,
@@ -250,7 +367,13 @@ var _ = Describe("Broker API", func() {
 			))
 			Expect(resp.Code).To(Equal(202))
 			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
+			Expect(body).To(MatchOperationJSON(`
+			{
+			  "recipe_id":"provision-recipe-id",
+			  "type":"provision",
+			  "whitelist_recipe_ids":["id-for-1.1.1.1","id-for-2.2.2.2","id-for-3.3.3.3"]
+			}
+			`))
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
 				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
@@ -263,7 +386,7 @@ var _ = Describe("Broker API", func() {
 				Version:      "",
 				ClusterID:    "",
 			}
-			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
+			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
 		})
 	})
 
@@ -275,6 +398,11 @@ var _ = Describe("Broker API", func() {
 
 		It("provisions into cluster when configured with a cluster name", func() {
 			instanceID := uuid.NewV4().String()
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
+
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PUT",
 				"/v2/service_instances/"+instanceID,
@@ -292,7 +420,13 @@ var _ = Describe("Broker API", func() {
 
 			Expect(resp.Code).To(Equal(202))
 			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"provision-recipe-id\",\"type\":\"provision\"}`))
+			Expect(body).To(MatchOperationJSON(`
+			{
+			  "recipe_id":"provision-recipe-id",
+			  "type":"provision",
+			  "whitelist_recipe_ids":["id-for-1.1.1.1","id-for-2.2.2.2","id-for-3.3.3.3"]
+			}
+			`))
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
 				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
@@ -303,14 +437,50 @@ var _ = Describe("Broker API", func() {
 				SSL:          true,
 				ClusterID:    "1234",
 			}
-			Expect(fakeComposeClient.CreateDeploymentParams).To(Equal(expectedDeploymentParams))
+			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
+		})
+
+		It("responds with 500 when a whitelist recipe ID is invalid", func() {
+			instanceID := uuid.NewV4().String()
+			invalid := ""
+			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(
+				0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{},
+			)
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(
+				1, &composeapi.Recipe{ID: invalid, Status: "complete"}, []error{},
+			)
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(
+				2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{},
+			)
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+instanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": %s
+				}`, service.ID, service.Plans[0].ID, "{}")),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+
+			Expect(resp.Code).To(Equal(500))
+			body := ReadResponseBody(resp.Body)
+			Expect(body).To(MatchJSON(`{"description":"malformed response from Compose: invalid whitelist recipe ID"}`))
 		})
 	})
 
 	Describe("deprovisioning an instance", func() {
 
 		It("deprovisions the correct instance", func() {
-			instanceID := fakeComposeClient.Deployments[0].ID
+			instanceID := uuid.NewV4().String()
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.DeprovisionDeploymentReturns(&composeapi.Recipe{ID: "deprovision-recipe-id"}, []error{})
 			resp := DoRequest(brokerAPI, NewRequest(
 				"DELETE",
 				"/v2/service_instances/"+instanceID,
@@ -319,10 +489,9 @@ var _ = Describe("Broker API", func() {
 				cfg.Password,
 				UriParam{Key: "accepts_incomplete", Value: "true"},
 			))
+			Expect(fakeComposeClient.DeprovisionDeploymentArgsForCall(0)).To(Equal("1"))
 			Expect(resp.Code).To(Equal(202))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring(`{\"recipe_id\":\"deprovision-recipe-id\",\"type\":\"deprovision\"}`))
-			Expect(fakeComposeClient.DeprovisionDeploymentID).To(Equal(instanceID))
+			Expect(ReadResponseBody(resp.Body)).To(MatchOperationJSON(`{"type":"deprovision","recipe_id":"deprovision-recipe-id", "whitelist_recipe_ids": []}`))
 		})
 
 	})
@@ -330,12 +499,12 @@ var _ = Describe("Broker API", func() {
 	Describe("updating a service", func() {
 
 		It("does not allow updating the plan", func() {
-			instanceID := fakeComposeClient.Deployments[0].ID
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{}, []error{})
 			oldPlanID := service.Plans[0].ID
 			newPlanID := service.Plans[1].ID
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PATCH",
-				"/v2/service_instances/"+instanceID,
+				"/v2/service_instances/update-me",
 				strings.NewReader(fmt.Sprintf(`{
 					"service_id": "%s",
 					"plan_id": "%s",
@@ -350,7 +519,7 @@ var _ = Describe("Broker API", func() {
 			))
 			Expect(resp.Code).To(Equal(500))
 			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring("changing plans is not currently supported"))
+			Expect(body).To(MatchJSON(`{"description":"changing plans is not currently supported"}`))
 		})
 
 	})
@@ -358,9 +527,18 @@ var _ = Describe("Broker API", func() {
 	Describe("binding to a service", func() {
 
 		It("returns binding information", func() {
-			instanceID := fakeComposeClient.Deployments[0].ID
+			instanceID := "bind-me-up"
+			connectionStrings := composeapi.ConnectionStrings{
+				Direct: []string{"i", "just", "love", "connecting"},
+			}
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				Type:       "fakedb",
+				Connection: connectionStrings,
+			}, []error{})
+
 			bindingID := uuid.NewV4().String()
 			appID := uuid.NewV4().String()
+
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PUT",
 				fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID),
@@ -393,9 +571,18 @@ var _ = Describe("Broker API", func() {
 	Describe("unbinding from a service", func() {
 
 		It("allows unbinding a service", func() {
-			instanceID := fakeComposeClient.Deployments[0].ID
+			instanceID := "please-unbind-me"
 			bindingID := uuid.NewV4().String()
 			appID := uuid.NewV4().String()
+			connectionStrings := composeapi.ConnectionStrings{
+				Direct: []string{"i", "just", "love", "connecting"},
+			}
+
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				Type:       "fakedb",
+				Connection: connectionStrings,
+			}, []error{})
+
 			resp := DoRequest(brokerAPI, NewRequest(
 				"PUT",
 				fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID),
@@ -424,68 +611,216 @@ var _ = Describe("Broker API", func() {
 	})
 
 	Describe("polling for the status of the last operation", func() {
+		Context("without whitelist", func() {
+			var req *http.Request
 
-		var (
-			req *http.Request
-		)
+			BeforeEach(func() {
+				req = NewRequest(
+					"GET",
+					fmt.Sprintf("/v2/service_instances/%s/last_operation", uuid.NewV4().String()),
+					nil,
+					cfg.Username,
+					cfg.Password,
+					UriParam{Key: "service_id", Value: service.ID},
+					UriParam{Key: "plan_id", Value: service.Plans[0].ID},
+					UriParam{Key: "operation", Value: "{\"recipe_id\":\"recipe-id\",\"type\":\"provision\"}"},
+				)
+			})
 
-		BeforeEach(func() {
-			req = NewRequest(
-				"GET",
-				fmt.Sprintf("/v2/service_instances/%s/last_operation", uuid.NewV4().String()),
-				nil,
-				cfg.Username,
-				cfg.Password,
-				UriParam{Key: "service_id", Value: service.ID},
-				UriParam{Key: "plan_id", Value: service.Plans[0].ID},
-				UriParam{Key: "operation", Value: "{\"recipe_id\":\"recipe-id\",\"type\":\"provision\"}"},
-			)
+			It("returns an error when unable to get the recipe", func() {
+				fakeComposeClient.GetRecipeReturns(
+					nil,
+					[]error{fmt.Errorf("error: failed to get recipe by ID")},
+				)
+
+				resp := DoRequest(brokerAPI, req)
+
+				Expect(fakeComposeClient.GetRecipeArgsForCall(0)).To(Equal("recipe-id"))
+				Expect(resp.Code).To(Equal(500))
+				Expect(ReadResponseBody(resp.Body)).
+					To(MatchJSON(`{"description":"error: failed to get recipe by ID"}`))
+			})
+
+			It("returns a failed state when the Compose recipe status is not recognised", func() {
+				fakeComposeClient.GetRecipeReturns(
+					&composeapi.Recipe{Status: "some-unknown-recipe-status"},
+					[]error{},
+				)
+
+				resp := DoRequest(brokerAPI, req)
+
+				Expect(fakeComposeClient.GetRecipeArgsForCall(0)).To(Equal("recipe-id"))
+				Expect(resp.Code).To(Equal(200))
+				Expect(ReadResponseBody(resp.Body)).
+					To(MatchJSON(`{"state":"failed"}`))
+			})
+
+			It("returns OK when last operation has completed", func() {
+				fakeComposeClient.GetRecipeReturns(
+					&composeapi.Recipe{Status: "complete"},
+					[]error{},
+				)
+
+				resp := DoRequest(brokerAPI, req)
+
+				Expect(fakeComposeClient.GetRecipeArgsForCall(0)).To(Equal("recipe-id"))
+				Expect(resp.Code).To(Equal(200))
+				Expect(ReadResponseBody(resp.Body)).To(MatchJSON(`{"state":"succeeded"}`))
+			})
+
+			It("returns OK when last operation is still running", func() {
+				fakeComposeClient.GetRecipeReturns(
+					&composeapi.Recipe{Status: "running"},
+					[]error{},
+				)
+
+				resp := DoRequest(brokerAPI, req)
+
+				Expect(fakeComposeClient.GetRecipeArgsForCall(0)).To(Equal("recipe-id"))
+				Expect(resp.Code).To(Equal(200))
+				Expect(ReadResponseBody(resp.Body)).To(MatchJSON(`{"state":"in progress"}`))
+			})
+
+			It("returns OK when last operation is waiting to run", func() {
+				fakeComposeClient.GetRecipeReturns(
+					&composeapi.Recipe{Status: "waiting"},
+					[]error{},
+				)
+
+				resp := DoRequest(brokerAPI, req)
+
+				Expect(fakeComposeClient.GetRecipeArgsForCall(0)).To(Equal("recipe-id"))
+				Expect(resp.Code).To(Equal(200))
+				Expect(ReadResponseBody(resp.Body)).To(MatchJSON(`{"state":"in progress"}`))
+			})
+
+			It("responds OK on success", func() {
+				fakeComposeClient.GetRecipeReturns(&composeapi.Recipe{Status: "complete"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"succeeded"}`))
+			})
+
+			It("responds OK on failure to deploy", func() {
+				fakeComposeClient.GetRecipeReturns(&composeapi.Recipe{Status: "some-failure-state"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"failed"}`))
+			})
+
+			It("responds with Error when deployment status isn't available", func() {
+				fakeComposeClient.GetRecipeReturns(&composeapi.Recipe{}, []error{fmt.Errorf("some-error")})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(500))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"description":"some-error"}`))
+			})
 		})
 
-		It("returns an error when unable to get the recipe", func() {
-			fakeComposeClient.GetRecipeErr = fmt.Errorf("error: failed to get recipe by ID")
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(500))
-			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring(`{"description":"error: failed to get recipe by ID"}`))
-		})
+		Context("with whitelist", func() {
+			var req *http.Request
 
-		It("returns a failed state when the Compose recipe status is not recognised", func() {
-			fakeComposeClient.GetRecipeStatus = "some-unknown-recipe-status"
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(200))
-			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring("failed"))
-		})
+			BeforeEach(func() {
+				brokerAPI = buildAPI(&config.Config{
+					Username: "jeff",
+					Password: "j3ffers0n",
+					DBPrefix: "test",
+					IPWhitelist: []string{
+						"1.1.1.1",
+						"2.2.2.2",
+						"3.3.3.3",
+					},
+				}, fakeComposeClient)
 
-		It("returns OK when last operation has completed", func() {
-			fakeComposeClient.GetRecipeStatus = "complete"
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(200))
-			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring("succeeded"))
-		})
+				req = NewRequest(
+					"GET",
+					fmt.Sprintf("/v2/service_instances/%s/last_operation", uuid.NewV4().String()),
+					nil,
+					cfg.Username,
+					cfg.Password,
+					UriParam{Key: "service_id", Value: service.ID},
+					UriParam{Key: "plan_id", Value: service.Plans[0].ID},
+					UriParam{Key: "operation", Value: `
+						{
+							"type": "provision",
+							"recipe_id": "recipe-id-1",
+							"whitelist_recipe_ids": [
+								"recipe-id-2",
+								"recipe-id-3",
+								"recipe-id-4"
+							]
+						}
+					`},
+				)
+			})
 
-		It("returns OK when last operation is still running", func() {
-			fakeComposeClient.GetRecipeStatus = "running"
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(200))
-			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring("in progress"))
-		})
+			It("responds OK when all successful", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{Status: "complete"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"succeeded"}`))
+			})
 
-		It("returns OK when last operation is waiting to run", func() {
-			fakeComposeClient.GetRecipeStatus = "waiting"
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(200))
-			Expect(fakeComposeClient.GetRecipeID).To(Equal("recipe-id"))
-			body := ReadResponseBody(resp.Body)
-			Expect(string(body)).To(ContainSubstring("in progress"))
-		})
+			It("responds OK with a failed state when any whitelist entry fails to create", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{Status: "some-failure-state"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"failed"}`))
+			})
 
+			It("responds OK with a failed state when deployment fails and whitelists are pending", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "failed"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "waiting"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "waiting"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{Status: "waiting"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"failed"}`))
+			})
+
+			It("responds OK with an 'in progress' state when any whitelist recipe is running", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "running"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{Status: "complete"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"in progress"}`))
+			})
+
+			It("responds OK with an 'in progress' state when any whitelist recipe is waiting", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "waiting"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{Status: "complete"}, []error{})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(200))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"state":"in progress"}`))
+			})
+
+			It("responds with Error when failing to get whitelist status", func() {
+				fakeComposeClient.GetRecipeReturnsOnCall(0, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(1, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(2, &composeapi.Recipe{Status: "complete"}, []error{})
+				fakeComposeClient.GetRecipeReturnsOnCall(3, &composeapi.Recipe{}, []error{fmt.Errorf("some-error")})
+				resp := DoRequest(brokerAPI, req)
+				Expect(resp.Code).To(Equal(500))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`{"description":"some-error"}`))
+			})
+		})
 	})
 })

@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"code.cloudfoundry.org/lager"
@@ -25,14 +26,24 @@ const (
 )
 
 type OperationData struct {
-	RecipeID string `json:"recipe_id"`
-	Type     string `json:"type"`
+	Type               string   `json:"type"`
+	RecipeID           string   `json:"recipe_id"`
+	WhitelistRecipeIDs []string `json:"whitelist_recipe_ids"`
 }
 
-var composeStatus2State = map[string]brokerapi.LastOperationState{
+func lookupBrokerAPIState(composeStatus string) brokerapi.LastOperationState {
+	state, ok := composeStatus2BrokerAPIState[composeStatus]
+	if !ok {
+		return brokerapi.Failed
+	}
+	return state
+}
+
+var composeStatus2BrokerAPIState = map[string]brokerapi.LastOperationState{
 	"complete": brokerapi.Succeeded,
 	"running":  brokerapi.InProgress,
 	"waiting":  brokerapi.InProgress,
+	"failed":   brokerapi.Failed,
 }
 
 type Broker struct {
@@ -105,7 +116,7 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, err
 	}
 
-	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return spec, err
 	}
@@ -125,12 +136,46 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, compose.SquashErrors(errs)
 	}
 
-	operationData, err := makeOperationData("provision", deployment.ProvisionRecipeID)
+	ok := false
+	defer func() {
+		if !ok {
+			_, errs := b.Compose.DeprovisionDeployment(deployment.ID)
+			for _, err := range errs {
+				b.Logger.Error("failed-deprovision", err, lager.Data{
+					instanceIDLogKey:   instanceID,
+					detailsLogKey:      details,
+					asyncAllowedLogKey: asyncAllowed,
+				})
+			}
+		}
+	}()
+
+	whitelistRecipeIDs := []string{}
+	for _, ip := range b.Config.IPWhitelist {
+		whitelistParams := composeapi.DeploymentWhitelistParams{
+			IP:          ip,
+			Description: fmt.Sprintf("Allow %s to access deployment", ip),
+		}
+		whitelistRecipe, whitelistErrs := b.Compose.CreateDeploymentWhitelist(deployment.ID, whitelistParams)
+		if len(whitelistErrs) > 0 {
+			return spec, compose.SquashErrors(whitelistErrs)
+		}
+		if whitelistRecipe == nil {
+			return spec, errors.New("malformed response from Compose: no pending whitelist recipe received")
+		}
+		if whitelistRecipe.ID == "" {
+			return spec, errors.New("malformed response from Compose: invalid whitelist recipe ID")
+		}
+		whitelistRecipeIDs = append(whitelistRecipeIDs, whitelistRecipe.ID)
+	}
+
+	operationData, err := makeOperationData("provision", deployment.ProvisionRecipeID, whitelistRecipeIDs)
 	if err != nil {
 		return spec, err
 	}
 
 	spec.OperationData = operationData
+	ok = true
 
 	return spec, nil
 }
@@ -150,7 +195,7 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return spec, err
 	}
@@ -167,7 +212,7 @@ func (b *Broker) Deprovision(context context.Context, instanceID string, details
 		return spec, compose.SquashErrors(errs)
 	}
 
-	operationData, err := makeOperationData("deprovision", recipe.ID)
+	operationData, err := makeOperationData("deprovision", recipe.ID, []string{})
 	if err != nil {
 		return spec, err
 	}
@@ -186,7 +231,7 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 
 	binding := brokerapi.Binding{}
 
-	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return binding, err
 	}
@@ -218,7 +263,7 @@ func (b *Broker) Unbind(context context.Context, instanceID, bindingID string, d
 		detailsLogKey:    details,
 	})
 
-	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return err
 	}
@@ -258,7 +303,7 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, err
 	}
 
-	instanceName, err := makeInstanceName(b.Config.DBPrefix, instanceID)
+	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return spec, err
 	}
@@ -289,7 +334,7 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 		return spec, compose.SquashErrors(errs)
 	}
 
-	operationData, err := makeOperationData("update", recipe.ID)
+	operationData, err := makeOperationData("update", recipe.ID, []string{})
 	if err != nil {
 		return spec, err
 	}
@@ -300,7 +345,6 @@ func (b *Broker) Update(context context.Context, instanceID string, details brok
 }
 
 func (b *Broker) LastOperation(context context.Context, instanceID, operationDataJson string) (brokerapi.LastOperation, error) {
-
 	lastOperation := brokerapi.LastOperation{}
 	operationData := OperationData{}
 	err := json.Unmarshal([]byte(operationDataJson), &operationData)
@@ -313,19 +357,35 @@ func (b *Broker) LastOperation(context context.Context, instanceID, operationDat
 		operationDataLogKey: operationData.RecipeID,
 	})
 
-	recipe, errs := b.Compose.GetRecipe(operationData.RecipeID)
+	deploymentRecipe, errs := b.Compose.GetRecipe(operationData.RecipeID)
 	if len(errs) > 0 {
 		return lastOperation, compose.SquashErrors(errs)
 	}
-
-	state := composeStatus2State[recipe.Status]
-
-	if state == "" {
-		state = brokerapi.Failed
+	deploymentState := lookupBrokerAPIState(deploymentRecipe.Status)
+	if deploymentState != brokerapi.Succeeded {
+		return brokerapi.LastOperation{
+			State:       deploymentState,
+			Description: deploymentRecipe.StatusDetail,
+		}, nil
 	}
 
-	lastOperation.State = state
-	lastOperation.Description = recipe.StatusDetail
+	for _, recipeID := range operationData.WhitelistRecipeIDs {
+		whitelistRecipe, errs := b.Compose.GetRecipe(recipeID)
+		if len(errs) > 0 {
+			return lastOperation, compose.SquashErrors(errs)
+		}
+		state := lookupBrokerAPIState(whitelistRecipe.Status)
 
-	return lastOperation, nil
+		if state != brokerapi.Succeeded {
+			return brokerapi.LastOperation{
+				State:       state,
+				Description: whitelistRecipe.StatusDetail,
+			}, nil
+		}
+	}
+
+	return brokerapi.LastOperation{
+		State:       deploymentState,
+		Description: deploymentRecipe.StatusDetail,
+	}, nil
 }

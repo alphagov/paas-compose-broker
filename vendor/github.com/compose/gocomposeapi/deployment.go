@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/parnurzeal/gorequest"
 )
 
 // Deployment structure
@@ -34,6 +32,7 @@ type Deployment struct {
 	Notes               string            `json:"notes,omitempty"`
 	CustomerBillingCode string            `json:"customer_billing_code,omitempty"`
 	Version             string            `json:"version,omitempty"`
+	ClusterID           string            `json:"cluster_id,omitempty"`
 	Links               Links             `json:"_links"`
 }
 
@@ -43,18 +42,20 @@ type Links struct {
 	ScalingsLink     Link `json:"scalings"`
 	BackupsLink      Link `json:"backups"`
 	AlertsLink       Link `json:"alerts"`
+	PortalUsersLink  Link `json:"portal_users"`
 	ClusterLink      Link `json:"cluster"`
 }
 
 // ConnectionStrings structure, part of the Deployment struct
 type ConnectionStrings struct {
-	Health   string      `json:"health,omitempty"`
-	SSH      string      `json:"ssh,omitempty"`
-	Admin    string      `json:"admin,omitempty"`
-	SSHAdmin string      `json:"ssh_admin,omitempty"`
-	CLI      []string    `json:"cli,omitempty"`
-	Direct   []string    `json:"direct,omitempty"`
-	Misc     interface{} `json:"misc,omitempty"`
+	Health   []string            `json:"health,omitempty"`
+	SSH      []string            `json:"ssh,omitempty"`
+	Admin    []string            `json:"admin,omitempty"`
+	SSHAdmin []string            `json:"ssh_admin,omitempty"`
+	CLI      []string            `json:"cli,omitempty"`
+	Direct   []string            `json:"direct,omitempty"`
+	Maps     []map[string]string `json:"maps,omitempty"`
+	Misc     interface{}         `json:"misc,omitempty"`
 }
 
 // deploymentsResource is used to represent and remove the JSON+HAL Embedded wrapper
@@ -88,17 +89,19 @@ type PatchDeploymentParams struct {
 
 // DeploymentParams core parameters for a new deployment
 type DeploymentParams struct {
-	Name                string `json:"name"`
-	AccountID           string `json:"account_id"`
-	ClusterID           string `json:"cluster_id,omitempty"`
-	Datacenter          string `json:"datacenter,omitempty"`
-	DatabaseType        string `json:"type"`
-	Version             string `json:"version,omitempty"`
-	Units               int    `json:"units,omitempty"`
-	SSL                 bool   `json:"ssl,omitempty"`
-	WiredTiger          bool   `json:"wired_tiger,omitempty"`
-	Notes               string `json:"notes,omitempty"`
-	CustomerBillingCode string `json:"customer_billing_code,omitempty"`
+	Name                string   `json:"name"`
+	AccountID           string   `json:"account_id"`
+	ClusterID           string   `json:"cluster_id,omitempty"`
+	Datacenter          string   `json:"datacenter,omitempty"`
+	ProvisioningTags    []string `json:"provisioning_tags,omitempty"`
+	DatabaseType        string   `json:"type"`
+	Version             string   `json:"version,omitempty"`
+	Units               int      `json:"units,omitempty"`
+	SSL                 bool     `json:"ssl,omitempty"`
+	CacheMode           bool     `json:"cache_mode,omitempty"`
+	WiredTiger          bool     `json:"wired_tiger,omitempty"`
+	Notes               string   `json:"notes,omitempty"`
+	CustomerBillingCode string   `json:"customer_billing_code,omitempty"`
 }
 
 //VersionTransition a struct wrapper for version transition information
@@ -127,9 +130,7 @@ type deploymentVersion struct {
 func (c *Client) CreateDeploymentJSON(params DeploymentParams) (string, []error) {
 	deploymentparams := CreateDeploymentParams{Deployment: params}
 
-	response, body, errs := gorequest.New().Post(apibase+"deployments").
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("POST", apibase+"deployments").
 		Send(deploymentparams).
 		End()
 
@@ -219,19 +220,11 @@ func (c *Client) GetDeploymentByName(deploymentName string) (*Deployment, []erro
 //DeprovisionDeploymentJSON performs the call
 func (c *Client) DeprovisionDeploymentJSON(deploymentID string) (string, []error) {
 
-	response, body, errs := gorequest.New().Delete(apibase+"deployments/"+deploymentID).
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("DELETE", apibase+"deployments/"+deploymentID).
 		End()
 
 	if response.StatusCode != 202 { // Expect Accepted on success - assume error on anything else
-		myerrors := Errors{}
-		err := json.Unmarshal([]byte(body), &myerrors)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d - body %s", response.StatusCode, response.Body))
-		} else {
-			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
-		}
+		errs = ProcessErrors(response.StatusCode, body)
 	}
 
 	return body, errs
@@ -263,20 +256,12 @@ func (c *Client) PatchDeploymentJSON(params PatchDeploymentParams) (string, []er
 			Notes:               params.Notes,
 		}}
 
-	response, body, errs := gorequest.New().Patch(apibase+"deployments/"+patchParams.DeploymentID).
-		Set("Authorization", "Bearer "+c.apiToken).
-		Set("Content-type", "application/json; charset=utf-8").
+	response, body, errs := c.newRequest("PATCH", apibase+"deployments/"+patchParams.DeploymentID).
 		Send(patchParams).
 		End()
 
 	if response.StatusCode != 200 { // Expect Accepted on success - assume error on anything else
-		myerrors := Errors{}
-		err := json.Unmarshal([]byte(body), &myerrors)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to parse error - status code %d - body %s", response.StatusCode, response.Body))
-		} else {
-			errs = append(errs, fmt.Errorf("%v", myerrors.Error))
-		}
+		errs = ProcessErrors(response.StatusCode, body)
 	}
 
 	return body, errs

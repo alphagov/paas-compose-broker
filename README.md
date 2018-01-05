@@ -74,3 +74,9 @@ To only run the unit tests:
 ```
 make unit
 ```
+
+We automatically generate a fake client, but if you want to regenerate it:
+
+```
+make -B compose/fakes/fake_client.go
+```

@@ -35,7 +35,7 @@ var _ = Describe("Broker Compose Integration", func() {
 		It("should support the full instance lifecycle", func() {
 
 			By("initializing service from catalog", func() {
-				service = helper.NewService(redisServiceID, redisPlanID)
+				service = helper.NewService(redisServiceID, redisPlanID, []string{})
 			})
 
 			By("provisioning a service", func() {

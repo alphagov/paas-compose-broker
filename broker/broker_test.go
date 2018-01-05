@@ -19,20 +19,20 @@ var _ = Describe("Broker", func() {
 	Describe("constructing a broker", func() {
 
 		var (
-			fakeComposeClient    *fakes.FakeComposeClient
+			fakeComposeClient    *fakes.FakeClient
 			cfg                  *config.Config
 			fakeDBEngineProvider *enginefakes.FakeProvider
 		)
 
 		BeforeEach(func() {
-			fakeComposeClient = fakes.New()
+			fakeComposeClient = &fakes.FakeClient{}
 			cfg = &config.Config{}
 			fakeDBEngineProvider = &enginefakes.FakeProvider{}
 		})
 
 		Describe("looking up the compose Account ID", func() {
 			BeforeEach(func() {
-				fakeComposeClient.Account = composeapi.Account{ID: "1234"}
+				fakeComposeClient.GetAccountReturns(&composeapi.Account{ID: "1234"}, []error{})
 			})
 
 			It("looks up the compose account ID", func() {
@@ -43,7 +43,10 @@ var _ = Describe("Broker", func() {
 			})
 
 			It("returns an error if looking up the account fails", func() {
-				fakeComposeClient.GlobalError = errors.New("something went wrong")
+				fakeComposeClient.GetAccountReturns(
+					&composeapi.Account{},
+					[]error{errors.New("something went wrong")},
+				)
 				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).To(HaveOccurred())
 			})
@@ -51,16 +54,7 @@ var _ = Describe("Broker", func() {
 
 		Describe("populating the cluster ID", func() {
 			BeforeEach(func() {
-				fakeComposeClient.Clusters = []composeapi.Cluster{
-					{
-						ID:   "1",
-						Name: "cluster-one",
-					},
-					{
-						ID:   "2",
-						Name: "cluster-two",
-					},
-				}
+				fakeComposeClient.GetAccountReturns(&composeapi.Account{ID: "1234"}, []error{})
 			})
 
 			It("leaves the cluster ID blank if no cluster name provided", func() {
@@ -72,6 +66,10 @@ var _ = Describe("Broker", func() {
 
 			It("populates the clusterID using the provided name", func() {
 				cfg.ClusterName = "cluster-two"
+				fakeComposeClient.GetClusterByNameReturns(
+					&composeapi.Cluster{ID: "2", Name: "cluster-two"},
+					[]error{},
+				)
 
 				b, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).NotTo(HaveOccurred())
@@ -81,6 +79,10 @@ var _ = Describe("Broker", func() {
 
 			It("returns an error if the cluster ID can't be looked up", func() {
 				cfg.ClusterName = "non-existent"
+				fakeComposeClient.GetClusterByNameReturns(
+					nil,
+					[]error{errors.New("Can't find it")},
+				)
 
 				_, err := broker.New(fakeComposeClient, fakeDBEngineProvider, cfg, &catalog.Catalog{}, nil)
 				Expect(err).To(HaveOccurred())

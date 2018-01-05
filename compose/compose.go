@@ -7,6 +7,7 @@ import (
 	composeapi "github.com/compose/gocomposeapi"
 )
 
+//go:generate counterfeiter -o fakes/fake_client.go . Client
 type Client interface {
 	GetAccount() (*composeapi.Account, []error)
 	GetClusters() (*[]composeapi.Cluster, []error)
@@ -16,6 +17,8 @@ type Client interface {
 	GetDeployment(string) (*composeapi.Deployment, []error)
 	GetDeploymentByName(string) (*composeapi.Deployment, []error)
 	GetDeployments() (*[]composeapi.Deployment, []error)
+	CreateDeploymentWhitelist(string, composeapi.DeploymentWhitelistParams) (*composeapi.Recipe, []error)
+	GetWhitelistForDeployment(string) ([]composeapi.DeploymentWhitelist, []error)
 	GetRecipe(string) (*composeapi.Recipe, []error)
 	SetScalings(composeapi.ScalingsParams) (*composeapi.Recipe, []error)
 }

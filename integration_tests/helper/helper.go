@@ -256,16 +256,17 @@ func (s *ServiceHelper) Provision() {
 	Expect(expectedCluster.Type).To(Equal("private"))
 }
 
-func NewService(serviceID string, planID string) (s *ServiceHelper) {
+func NewService(serviceID string, planID string, whitelistedIPs []string) (s *ServiceHelper) {
 	s = &ServiceHelper{
 		InstanceID: NewUUID(),
 		ServiceID:  serviceID,
 		PlanID:     planID,
 		Cfg: &config.Config{
-			Username: randString(10),
-			Password: randString(10),
-			DBPrefix: "test-suite",
-			APIToken: os.Getenv("COMPOSE_API_KEY"),
+			Username:    randString(10),
+			Password:    randString(10),
+			DBPrefix:    "test-suite",
+			APIToken:    os.Getenv("COMPOSE_API_KEY"),
+			IPWhitelist: whitelistedIPs,
 		},
 		Provider: dbengine.NewProviderService(),
 	}
