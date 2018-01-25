@@ -5,10 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
-	"time"
 
 	composeapi "github.com/compose/gocomposeapi"
 	mgo "gopkg.in/mgo.v2"
@@ -26,13 +24,37 @@ func NewMongoEngine(deployment *composeapi.Deployment) *MongoEngine {
 	return &MongoEngine{deployment}
 }
 
-func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
+func DialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *Credentials {
+	baseURI := url.URL{
+		Scheme: "mongodb",
+		User:   url.UserPassword(dialInfo.Username, dialInfo.Password),
+		Host:   "mongo-db-host-place-holder",
+		Path:   dialInfo.Database,
+	}
 
-	masterCredentials, err := e.getMasterCredentials()
+	mongoURI := strings.Replace(
+		baseURI.String(),
+		"mongo-db-host-place-holder",
+		strings.Join(dialInfo.Addrs, ","),
+		-1,
+	)
+
+	return &Credentials{
+		Hosts:               dialInfo.Addrs,
+		Name:                dialInfo.Database,
+		Username:            dialInfo.Username,
+		Password:            dialInfo.Password,
+		URI:                 mongoURI,
+		CACertificateBase64: caCertificateBase64,
+	}
+}
+
+func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
+	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
 		return nil, err
 	}
-	session, err := newMongoSession(masterCredentials)
+	session, err := newMongoSession(e.deployment.CACertificateBase64, masterDialInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -54,25 +76,30 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 		return nil, err
 	}
 
-	return &Credentials{
-		Host:     masterCredentials.Host,
-		Port:     masterCredentials.Port,
-		Name:     dbname,
-		Username: username,
-		Password: password,
-		URI: (&url.URL{
-			Scheme: "mongodb",
-			User:   url.UserPassword(username, password),
-			Host:   masterCredentials.Host + ":" + masterCredentials.Port,
-			Path:   dbname,
-		}).String(),
-		CACertificateBase64: e.deployment.CACertificateBase64,
-	}, nil
+	bindDialInfo := masterDialInfo
+	bindDialInfo.Database = dbname
+	bindDialInfo.Username = username
+	bindDialInfo.Password = password
+
+	return DialInfoToCredentials(bindDialInfo, e.deployment.CACertificateBase64), nil
 }
 
-func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
+func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
+	masterDialInfo, err := e.getMasterDialInfo()
+	if err != nil {
+		return err
+	}
+	session, err := newMongoSession(e.deployment.CACertificateBase64, masterDialInfo)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
+}
+
+func newMongoSession(caCertificateBase64 string, dialInfo *mgo.DialInfo) (*mgo.Session, error) {
 	roots := x509.NewCertPool()
-	ca, err := base64.StdEncoding.DecodeString(credentials.CACertificateBase64)
+	ca, err := base64.StdEncoding.DecodeString(caCertificateBase64)
 	if err != nil {
 		return nil, err
 	}
@@ -81,36 +108,10 @@ func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
 	tlsConfig := &tls.Config{}
 	tlsConfig.RootCAs = roots
 
-	dialInfo := mgo.DialInfo{
-		Addrs:    []string{credentials.Host + ":" + credentials.Port},
-		Database: credentials.Name,
-		Timeout:  10 * time.Second,
-		Username: credentials.Username,
-		Password: credentials.Password,
-		Source:   credentials.AuthSource,
-		DialServer: func(addr *mgo.ServerAddr) (net.Conn, error) {
-			conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
-			return conn, err
-		},
-	}
-
-	return mgo.DialWithInfo(&dialInfo)
+	return mgo.DialWithInfo(dialInfo)
 }
 
-func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
-	masterCredentials, err := e.getMasterCredentials()
-	if err != nil {
-		return err
-	}
-	session, err := newMongoSession(masterCredentials)
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
-}
-
-func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
+func (e *MongoEngine) getMasterDialInfo() (*mgo.DialInfo, error) {
 	if e.deployment == nil {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
 	} else if len(e.deployment.Connection.Direct) < 1 {
@@ -119,23 +120,13 @@ func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
 		return nil, fmt.Errorf("connection string is empty")
 	}
 
-	mongoURL, err := url.Parse(e.deployment.Connection.Direct[0])
+	u, err := url.Parse(e.deployment.Connection.Direct[0])
 	if err != nil {
 		return nil, err
 	}
-	password, _ := mongoURL.User.Password()
-	return &Credentials{
-		Host: mongoURL.Hostname(),
-		// FIXME: Follow up story should fix mongo connection string handling.
-		// Right now we are hardcoding first host from the comma delimited list that Compose provides.
-		// url.Parse() parses mongo connection string wrongly and doesn't return an error
-		// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
-		Port:                strings.Split(mongoURL.Port(), ",")[0],
-		URI:                 mongoURL.String(),
-		Username:            mongoURL.User.Username(),
-		Password:            password,
-		Name:                strings.Split(mongoURL.EscapedPath(), "/")[1],
-		CACertificateBase64: e.deployment.CACertificateBase64,
-		AuthSource:          mongoURL.Query().Get("authSource"),
-	}, nil
+	q, _ := url.ParseQuery(u.RawQuery)
+	q.Del("ssl")
+	u.RawQuery = q.Encode()
+
+	return mgo.ParseURL(u.String())
 }

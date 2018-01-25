@@ -555,12 +555,11 @@ var _ = Describe("Broker API", func() {
 			))
 			Expect(resp.Code).To(Equal(201))
 			var data struct {
-				Credentials map[string]string `json:"credentials"`
+				Credentials map[string]interface{} `json:"credentials"`
 			}
 			err := json.NewDecoder(resp.Body).Decode(&data)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(data.Credentials["host"]).To(Equal("localhost"))
-			Expect(data.Credentials["port"]).To(Equal("27017"))
+			Expect(data.Credentials["hosts"]).To(Equal([]interface{}{"localhost"}))
 			Expect(data.Credentials["name"]).To(Equal("db_1111"))
 			Expect(data.Credentials["username"]).To(Equal("user"))
 			Expect(data.Credentials["ca_certificate_base64"]).To(Equal("AAAA"))

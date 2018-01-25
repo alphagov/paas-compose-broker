@@ -11,8 +11,7 @@ type FakeDBEngine struct {
 
 func (e *FakeDBEngine) GenerateCredentials(instanceID, bindingID string) (*dbengine.Credentials, error) {
 	return &dbengine.Credentials{
-		Host:                "localhost",
-		Port:                "27017",
+		Hosts:               []string{"localhost"},
 		URI:                 "fake://fadmin:fpass@fakehost.com:601601/fakedb",
 		Username:            "user",
 		Password:            "fpass",

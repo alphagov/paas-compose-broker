@@ -8,38 +8,39 @@ import (
 
 var _ = Describe("MongoDB", func() {
 
-	Context("getMasterCredentials", func() {
-
+	Context("getMasterDialInfo", func() {
 		It("should parse single-host master connection string", func() {
+
 			engine := NewMongoEngine(&composeapi.Deployment{
 				Connection: composeapi.ConnectionStrings{
 					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445/compose?authSource=admin&ssl=true"},
 				},
 			})
-			creds, err := engine.getMasterCredentials()
+			dialInfo, err := engine.getMasterDialInfo()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(creds.Username).To(Equal("user"))
-			Expect(creds.Password).To(Equal("password"))
-			Expect(creds.Host).To(Equal("test-c00.2.compose.direct"))
-			Expect(creds.Port).To(Equal("17445"))
-			Expect(creds.Name).To(Equal("compose"))
-			Expect(creds.AuthSource).To(Equal("admin"))
+			Expect(dialInfo.Username).To(Equal("user"))
+			Expect(dialInfo.Password).To(Equal("password"))
+			Expect(dialInfo.Addrs).To(Equal([]string{"test-c00.2.compose.direct:17445"}))
+			Expect(dialInfo.Database).To(Equal("compose"))
+			Expect(dialInfo.Source).To(Equal("admin"))
 		})
 
 		It("should parse multi-host master connection string", func() {
 			engine := NewMongoEngine(&composeapi.Deployment{
 				Connection: composeapi.ConnectionStrings{
-					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445,test-c00.0.compose.direct:17445/compose?authSource=admin&ssl=true"},
+					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445,test-c00.0.compose.direct:17446/compose?authSource=admin&ssl=true"},
 				},
 			})
-			creds, err := engine.getMasterCredentials()
+			dialInfo, err := engine.getMasterDialInfo()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(creds.Username).To(Equal("user"))
-			Expect(creds.Password).To(Equal("password"))
-			Expect(creds.Host).To(Equal("test-c00.2.compose.direct"))
-			Expect(creds.Port).To(Equal("17445"))
-			Expect(creds.Name).To(Equal("compose"))
-			Expect(creds.AuthSource).To(Equal("admin"))
+			Expect(dialInfo.Username).To(Equal("user"))
+			Expect(dialInfo.Password).To(Equal("password"))
+			Expect(dialInfo.Addrs).To(Equal([]string{
+				"test-c00.2.compose.direct:17445",
+				"test-c00.0.compose.direct:17446",
+			}))
+			Expect(dialInfo.Database).To(Equal("compose"))
+			Expect(dialInfo.Source).To(Equal("admin"))
 		})
 
 		It("should parse if there is no auth source", func() {
@@ -48,14 +49,16 @@ var _ = Describe("MongoDB", func() {
 					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445,test-c00.0.compose.direct:17445/compose?ssl=true"},
 				},
 			})
-			creds, err := engine.getMasterCredentials()
+			dialInfo, err := engine.getMasterDialInfo()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(creds.Username).To(Equal("user"))
-			Expect(creds.Password).To(Equal("password"))
-			Expect(creds.Host).To(Equal("test-c00.2.compose.direct"))
-			Expect(creds.Port).To(Equal("17445"))
-			Expect(creds.Name).To(Equal("compose"))
-			Expect(creds.AuthSource).To(Equal(""))
+			Expect(dialInfo.Username).To(Equal("user"))
+			Expect(dialInfo.Password).To(Equal("password"))
+			Expect(dialInfo.Addrs).To(Equal([]string{
+				"test-c00.2.compose.direct:17445",
+				"test-c00.0.compose.direct:17445",
+			}))
+			Expect(dialInfo.Database).To(Equal("compose"))
+			Expect(dialInfo.Source).To(Equal(""))
 		})
 
 		It("should fail to parse invalid master connection string", func() {
@@ -64,7 +67,7 @@ var _ = Describe("MongoDB", func() {
 					Direct: []string{"%gh&%ij"},
 				},
 			})
-			_, err := engine.getMasterCredentials()
+			_, err := engine.getMasterDialInfo()
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -74,9 +77,9 @@ var _ = Describe("MongoDB", func() {
 					Direct: []string{""},
 				},
 			})
-			creds, err := engine.getMasterCredentials()
+			dialInfo, err := engine.getMasterDialInfo()
 			Expect(err).Should(HaveOccurred())
-			Expect(creds).To(BeNil())
+			Expect(dialInfo).To(BeNil())
 		})
 
 	})

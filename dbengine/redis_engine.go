@@ -29,8 +29,7 @@ func (e *RedisEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 
 	password, _ := u.User.Password()
 	return &Credentials{
-		Host:     u.Hostname(),
-		Port:     u.Port(),
+		Hosts:    []string{u.Hostname() + ":" + u.Port()},
 		URI:      u.String(),
 		Username: u.User.Username(),
 		Password: password,
