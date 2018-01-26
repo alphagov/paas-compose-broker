@@ -5,8 +5,10 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
+	"time"
 
 	composeapi "github.com/compose/gocomposeapi"
 	mgo "gopkg.in/mgo.v2"
@@ -54,7 +56,8 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 	if err != nil {
 		return nil, err
 	}
-	session, err := newMongoSession(e.deployment.CACertificateBase64, masterDialInfo)
+
+	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -89,26 +92,12 @@ func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
 	if err != nil {
 		return err
 	}
-	session, err := newMongoSession(e.deployment.CACertificateBase64, masterDialInfo)
+	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
 		return err
 	}
 	defer session.Close()
 	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
-}
-
-func newMongoSession(caCertificateBase64 string, dialInfo *mgo.DialInfo) (*mgo.Session, error) {
-	roots := x509.NewCertPool()
-	ca, err := base64.StdEncoding.DecodeString(caCertificateBase64)
-	if err != nil {
-		return nil, err
-	}
-
-	roots.AppendCertsFromPEM(ca)
-	tlsConfig := &tls.Config{}
-	tlsConfig.RootCAs = roots
-
-	return mgo.DialWithInfo(dialInfo)
 }
 
 func (e *MongoEngine) getMasterDialInfo() (*mgo.DialInfo, error) {
@@ -120,13 +109,48 @@ func (e *MongoEngine) getMasterDialInfo() (*mgo.DialInfo, error) {
 		return nil, fmt.Errorf("connection string is empty")
 	}
 
-	u, err := url.Parse(e.deployment.Connection.Direct[0])
+	u, err := removeSSLOption(e.deployment.Connection.Direct[0])
 	if err != nil {
 		return nil, err
+	}
+
+	dialInfo, err := mgo.ParseURL(u)
+	if err != nil {
+		return nil, err
+	}
+	dialInfo.Timeout = 10 * time.Second
+	dialInfo.DialServer, err = createDialServer(e.deployment.CACertificateBase64)
+	if err != nil {
+		return nil, err
+	}
+
+	return dialInfo, nil
+}
+
+func removeSSLOption(uri string) (string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return uri, err
 	}
 	q, _ := url.ParseQuery(u.RawQuery)
 	q.Del("ssl")
 	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
 
-	return mgo.ParseURL(u.String())
+func createDialServer(caCert string) (func(*mgo.ServerAddr) (net.Conn, error), error) {
+	roots := x509.NewCertPool()
+	ca, err := base64.StdEncoding.DecodeString(caCert)
+	if err != nil {
+		return nil, err
+	}
+	roots.AppendCertsFromPEM(ca)
+
+	tlsConfig := &tls.Config{}
+	tlsConfig.RootCAs = roots
+
+	return func(addr *mgo.ServerAddr) (net.Conn, error) {
+		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
+		return conn, err
+	}, nil
 }

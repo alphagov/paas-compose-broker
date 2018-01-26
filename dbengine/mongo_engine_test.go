@@ -41,8 +41,29 @@ var _ = Describe("MongoDB", func() {
 	})
 
 	Context("getMasterDialInfo", func() {
-		It("should parse single-host master connection string", func() {
+		It("sets a timeout", func() {
+			engine := NewMongoEngine(&composeapi.Deployment{
+				Connection: composeapi.ConnectionStrings{
+					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445/compose?authSource=admin&ssl=true"},
+				},
+			})
+			dialInfo, err := engine.getMasterDialInfo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dialInfo.Timeout).To(BeNumerically(">", 0))
+		})
 
+		It("sets a custom DialServer function, to enable TLS", func() {
+			engine := NewMongoEngine(&composeapi.Deployment{
+				Connection: composeapi.ConnectionStrings{
+					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445/compose?authSource=admin&ssl=true"},
+				},
+			})
+			dialInfo, err := engine.getMasterDialInfo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dialInfo.DialServer).NotTo(BeNil())
+		})
+
+		It("should parse single-host master connection string", func() {
 			engine := NewMongoEngine(&composeapi.Deployment{
 				Connection: composeapi.ConnectionStrings{
 					Direct: []string{"mongodb://user:password@test-c00.2.compose.direct:17445/compose?authSource=admin&ssl=true"},

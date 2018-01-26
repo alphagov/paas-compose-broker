@@ -236,6 +236,11 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		return binding, err
 	}
 
+	b.Logger.Debug("findDeployment", lager.Data{
+		instanceIDLogKey: instanceID,
+		bindingIDLogKey:  bindingID,
+		detailsLogKey:    details,
+	})
 	deployment, err := findDeployment(b.Compose, instanceName)
 	if err == errDeploymentNotFound {
 		return binding, brokerapi.ErrInstanceDoesNotExist
@@ -252,6 +257,11 @@ func (b *Broker) Bind(context context.Context, instanceID, bindingID string, det
 		return binding, err
 	}
 
+	b.Logger.Debug("GenerateCredentials", lager.Data{
+		instanceIDLogKey: instanceID,
+		bindingIDLogKey:  bindingID,
+		detailsLogKey:    details,
+	})
 	binding.Credentials, err = dbEngine.GenerateCredentials(instanceID, bindingID)
 	return binding, err
 }
