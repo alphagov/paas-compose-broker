@@ -4,9 +4,41 @@ import (
 	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	mgo "gopkg.in/mgo.v2"
 )
 
 var _ = Describe("MongoDB", func() {
+
+	Describe("converting a dialInfo to Credentials", func() {
+		It("converts a single-host dialInfo string", func() {
+			dialInfo, err := mgo.ParseURL("mongodb://user:password@test-c00.2.compose.direct:17445/compose?authSource=admin")
+			Expect(err).NotTo(HaveOccurred())
+
+			creds := dialInfoToCredentials(dialInfo, "mylovelycertificate")
+			Expect(creds.Username).To(Equal("user"))
+			Expect(creds.Password).To(Equal("password"))
+			Expect(creds.Hosts).To(Equal([]string{"test-c00.2.compose.direct:17445"}))
+			Expect(creds.Name).To(Equal("compose"))
+			Expect(creds.URI).To(Equal("mongodb://user:password@test-c00.2.compose.direct:17445/compose"))
+			Expect(creds.CACertificateBase64).To(Equal("mylovelycertificate"))
+		})
+
+		It("converts multi-host dialInfo to Credentials", func() {
+			dialInfo, err := mgo.ParseURL("mongodb://user:password@test-c00.2.compose.direct:17445,test-c00.0.compose.direct:17446/compose?authSource=admin")
+			Expect(err).NotTo(HaveOccurred())
+
+			creds := dialInfoToCredentials(dialInfo, "mylovelycertificate")
+			Expect(creds.Username).To(Equal("user"))
+			Expect(creds.Password).To(Equal("password"))
+			Expect(creds.Hosts).To(Equal([]string{
+				"test-c00.2.compose.direct:17445",
+				"test-c00.0.compose.direct:17446",
+			}))
+			Expect(creds.Name).To(Equal("compose"))
+			Expect(creds.URI).To(Equal("mongodb://user:password@test-c00.2.compose.direct:17445,test-c00.0.compose.direct:17446/compose"))
+			Expect(creds.CACertificateBase64).To(Equal("mylovelycertificate"))
+		})
+	})
 
 	Context("getMasterDialInfo", func() {
 		It("should parse single-host master connection string", func() {

@@ -24,7 +24,7 @@ func NewMongoEngine(deployment *composeapi.Deployment) *MongoEngine {
 	return &MongoEngine{deployment}
 }
 
-func DialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *Credentials {
+func dialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *Credentials {
 	baseURI := url.URL{
 		Scheme: "mongodb",
 		User:   url.UserPassword(dialInfo.Username, dialInfo.Password),
@@ -81,7 +81,7 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 	bindDialInfo.Username = username
 	bindDialInfo.Password = password
 
-	return DialInfoToCredentials(bindDialInfo, e.deployment.CACertificateBase64), nil
+	return dialInfoToCredentials(bindDialInfo, e.deployment.CACertificateBase64), nil
 }
 
 func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
