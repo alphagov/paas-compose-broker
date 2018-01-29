@@ -118,11 +118,12 @@ type BindingData struct {
 	ID          string
 	AppID       string
 	Credentials struct {
-		Name                string `json:"name"`
-		Username            string `json:"username"`
-		Password            string `json:"password"`
-		URI                 string `json:"uri"`
-		CACertificateBase64 string `json:"ca_certificate_base64"`
+		Name                string   `json:"name"`
+		Username            string   `json:"username"`
+		Password            string   `json:"password"`
+		URI                 string   `json:"uri"`
+		URIs                []string `json:"uris"`
+		CACertificateBase64 string   `json:"ca_certificate_base64"`
 	} `json:"credentials"`
 }
 

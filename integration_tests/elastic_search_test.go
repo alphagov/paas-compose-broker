@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"net/http"
+	"strconv"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -87,6 +88,30 @@ var _ = Describe("Broker Compose Integration", func() {
 			body, err := ioutil.ReadAll(get.Body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body).To(ContainSubstring(putData))
+
+			By("ensuring credentials allow writing data in each URI")
+			for idx, uri := range binding.Credentials.URIs {
+				tweet_id := idx + 2
+
+				By("ensuring credentials allow writing data to URI " + strconv.Itoa(idx))
+				putURI := uri + "twitter/tweet/" + strconv.Itoa(tweet_id) + "?op_type=create"
+				putData := "{\"user\" : \"kimchy\",\"post_date\" : \"2009-11-15T14:12:12\",\"message\" : \"trying out Elasticsearch multiple uris\"}"
+				request, err := http.NewRequest("PUT", putURI, strings.NewReader(putData))
+				Expect(err).NotTo(HaveOccurred())
+				request.Header.Set("Content-Type", "application/json")
+				resp, err := client.Do(request)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(201))
+
+				By("ensuring credentials allow reading data form URI " + strconv.Itoa(idx))
+				getURI := uri + "twitter/tweet/" + strconv.Itoa(tweet_id)
+				get, err := client.Get(getURI)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(get.StatusCode).To(Equal(200))
+				body, err := ioutil.ReadAll(get.Body)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(body).To(ContainSubstring(putData))
+			}
 		})
 
 	})
