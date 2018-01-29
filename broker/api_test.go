@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	"github.com/alphagov/paas-compose-broker/broker"
 	"github.com/alphagov/paas-compose-broker/catalog"
@@ -246,13 +247,14 @@ var _ = Describe("Broker API", func() {
 
 			By("creating the deployment")
 			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-				AccountID:    "1",
-				Datacenter:   broker.ComposeDatacenter,
-				DatabaseType: "fakedb",
-				Units:        1,
-				SSL:          true,
-				ClusterID:    "",
+				Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+				AccountID:           "1",
+				Datacenter:          broker.ComposeDatacenter,
+				DatabaseType:        "fakedb",
+				Units:               1,
+				SSL:                 true,
+				ClusterID:           "",
+				CustomerBillingCode: "space-id",
 			}
 			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
 
@@ -376,17 +378,146 @@ var _ = Describe("Broker API", func() {
 			`))
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-				AccountID:    "1",
-				Datacenter:   broker.ComposeDatacenter,
-				DatabaseType: "fakedb",
-				Units:        1,
-				SSL:          true,
-				WiredTiger:   false,
-				Version:      "",
-				ClusterID:    "",
+				Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+				AccountID:           "1",
+				Datacenter:          broker.ComposeDatacenter,
+				DatabaseType:        "fakedb",
+				Units:               1,
+				SSL:                 true,
+				WiredTiger:          false,
+				Version:             "",
+				ClusterID:           "",
+				CustomerBillingCode: "space-id",
 			}
 			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
+		})
+	})
+
+	Describe("Provisions an instance from a backup", func() {
+		It("provisions an instance from a backup", func() {
+			newInstanceID := uuid.NewV4().String()
+			newInstanceName, err := broker.MakeInstanceName(cfg.DBPrefix, newInstanceID)
+			Expect(err).ToNot(HaveOccurred())
+			oldInstanceID := "123467"
+			oldInstanceName, err := broker.MakeInstanceName(cfg.DBPrefix, oldInstanceID)
+			Expect(err).ToNot(HaveOccurred())
+			newestBackupID := "xyz"
+
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				ID:                  oldInstanceID,
+				Name:                oldInstanceName,
+				ProvisionRecipeID:   "provision-recipe-id",
+				CustomerBillingCode: "space-id"}, nil)
+			fakeComposeClient.GetBackupsForDeploymentReturns(&[]composeapi.Backup{
+				{
+					ID:           newestBackupID,
+					IsRestorable: true,
+					CreatedAt:    time.Now(),
+				},
+			}, nil)
+			fakeComposeClient.RestoreBackupReturns(&composeapi.Deployment{ID: "2", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.PatchDeploymentReturns(&composeapi.Deployment{ID: "2", ProvisionRecipeID: "provision-recipe-id", CustomerBillingCode: "space-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+newInstanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": {
+						"restore_from_latest_snapshot_of": "%s"
+					}
+				}`, service.ID, service.Plans[0].ID, oldInstanceID)),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+			Expect(resp.Code).To(Equal(202))
+			body := ReadResponseBody(resp.Body)
+			Expect(body).To(MatchOperationJSON(`
+			{
+			  "recipe_id":"provision-recipe-id",
+			  "type":"provision",
+			  "whitelist_recipe_ids":["id-for-1.1.1.1","id-for-2.2.2.2","id-for-3.3.3.3"]
+			}
+			`))
+
+			By("getting the existing deployment")
+			Expect(fakeComposeClient.GetDeploymentByNameArgsForCall(0)).To(Equal(oldInstanceName))
+
+			By("listing its backups")
+			Expect(fakeComposeClient.GetBackupsForDeploymentArgsForCall(0)).To(Equal(oldInstanceID))
+
+			By("creating a new deployment by restoring the newest backup")
+			expectedRestoreBackupParams := composeapi.RestoreBackupParams{
+				DeploymentID: oldInstanceID,
+				BackupID:     newestBackupID,
+				Name:         newInstanceName,
+				Datacenter:   broker.ComposeDatacenter,
+				SSL:          true,
+			}
+			Expect(fakeComposeClient.RestoreBackupArgsForCall(0)).To(Equal(expectedRestoreBackupParams))
+
+			By("setting CustomerBillingCode on the new deployment")
+			expectedPatchDeploymentParams := composeapi.PatchDeploymentParams{
+				DeploymentID:        "2",
+				CustomerBillingCode: "space-id",
+			}
+			Expect(fakeComposeClient.PatchDeploymentArgsForCall(0)).To(Equal(expectedPatchDeploymentParams))
+		})
+
+		It("prevents provisioning an instance from a backup owned by someone else", func() {
+			oldInstanceID := "123467"
+			oldInstanceName, err := broker.MakeInstanceName(cfg.DBPrefix, oldInstanceID)
+			Expect(err).ToNot(HaveOccurred())
+			newestBackupID := "xyz"
+
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				ID:                  oldInstanceID,
+				Name:                oldInstanceName,
+				ProvisionRecipeID:   "provision-recipe-id",
+				CustomerBillingCode: "not-my-space-id",
+			}, nil)
+			fakeComposeClient.GetBackupsForDeploymentReturns(&[]composeapi.Backup{
+				{
+					ID:           newestBackupID,
+					IsRestorable: true,
+					CreatedAt:    time.Now(),
+				},
+			}, nil)
+			fakeComposeClient.RestoreBackupReturns(&composeapi.Deployment{ID: "2", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
+			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+oldInstanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": {
+						"restore_from_latest_snapshot_of": "%s"
+					}
+				}`, service.ID, service.Plans[0].ID, oldInstanceID)),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+			Expect(resp.Code).To(Equal(500))
+			body := ReadResponseBody(resp.Body)
+			Expect(body).To(MatchJSON(`
+			{
+			  "description": "you are only allowed to restore from backup to the same space"
+			}
+			`))
 		})
 	})
 
@@ -429,13 +560,14 @@ var _ = Describe("Broker API", func() {
 			`))
 
 			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:         fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-				AccountID:    "1",
-				Datacenter:   broker.ComposeDatacenter,
-				DatabaseType: "fakedb",
-				Units:        1,
-				SSL:          true,
-				ClusterID:    "1234",
+				Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
+				AccountID:           "1",
+				Datacenter:          broker.ComposeDatacenter,
+				DatabaseType:        "fakedb",
+				Units:               1,
+				SSL:                 true,
+				ClusterID:           "1234",
+				CustomerBillingCode: "space-id",
 			}
 			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
 		})
@@ -479,7 +611,9 @@ var _ = Describe("Broker API", func() {
 
 		It("deprovisions the correct instance", func() {
 			instanceID := uuid.NewV4().String()
-			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				ID: "1", ProvisionRecipeID: "provision-recipe-id",
+			}, []error{})
 			fakeComposeClient.DeprovisionDeploymentReturns(&composeapi.Recipe{ID: "deprovision-recipe-id"}, []error{})
 			resp := DoRequest(brokerAPI, NewRequest(
 				"DELETE",

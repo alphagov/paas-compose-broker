@@ -2,6 +2,7 @@ package broker
 
 import (
 	"errors"
+	"time"
 
 	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
@@ -59,6 +60,49 @@ var _ = Describe("Broker utility functions", func() {
 			instanceName, err := MakeInstanceName(" trim-spaces ", "0f38f9c2-085c-41ec-87bf-e38b72f7fdaa")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(instanceName).To(Equal("trim-spaces-0f38f9c2-085c-41ec-87bf-e38b72f7fdaa"))
+		})
+	})
+
+	Describe("newestRestorableBackup", func() {
+		It("returns nil if provided with no backups", func() {
+			nrb := newestRestorableBackup([]composeapi.Backup{})
+			Expect(nrb).To(BeNil())
+		})
+
+		It("returns the backup if provided with one backups", func() {
+			backups := []composeapi.Backup{
+				{CreatedAt: time.Now(), IsRestorable: true},
+			}
+			nrb := newestRestorableBackup(backups)
+			Expect(nrb).To(Equal(&backups[0]))
+		})
+
+		It("returns the newest of two backups", func() {
+			backups := []composeapi.Backup{
+				{CreatedAt: time.Now().Add(time.Hour * 2), IsRestorable: true},
+				{CreatedAt: time.Now().Add(time.Hour), IsRestorable: true},
+			}
+			nrb := newestRestorableBackup(backups)
+			Expect(nrb).To(Equal(&backups[0]))
+		})
+
+		It("returns the newest of three backups", func() {
+			backups := []composeapi.Backup{
+				{CreatedAt: time.Now(), IsRestorable: true},
+				{CreatedAt: time.Now().Add(time.Hour * 2), IsRestorable: true},
+				{CreatedAt: time.Now().Add(time.Hour), IsRestorable: true},
+			}
+			nrb := newestRestorableBackup(backups)
+			Expect(nrb).To(Equal(&backups[1]))
+		})
+
+		It("ignores unrestorable backups", func() {
+			backups := []composeapi.Backup{
+				{CreatedAt: time.Now().Add(time.Hour), IsRestorable: false},
+				{CreatedAt: time.Now(), IsRestorable: true},
+			}
+			nrb := newestRestorableBackup(backups)
+			Expect(nrb).To(Equal(&backups[1]))
 		})
 	})
 })

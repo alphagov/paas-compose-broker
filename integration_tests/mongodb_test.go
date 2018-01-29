@@ -1,6 +1,9 @@
 package integration_test
 
 import (
+	"fmt"
+	"time"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	mgo "gopkg.in/mgo.v2"
@@ -19,10 +22,11 @@ var _ = Describe("Broker Compose Integration", func() {
 		)
 
 		var (
-			service *helper.ServiceHelper
-			binding *helper.BindingData
-			conn    *mgo.Session
-			appID   string
+			service                 *helper.ServiceHelper
+			instanceID, instanceID2 string
+			binding, binding2       *helper.BindingData
+			conn, conn2             *mgo.Session
+			appID                   string
 		)
 
 		BeforeEach(func() {
@@ -40,19 +44,19 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("provisioning a service", func() {
-				service.Provision()
+				instanceID = service.Provision(map[string]interface{}{})
 			})
 
 			defer By("deprovisioning the service", func() {
-				service.Deprovision()
+				service.Deprovision(instanceID)
 			})
 
 			By("binding a resource to the service", func() {
-				binding = service.Bind(appID)
+				binding = service.Bind(instanceID, appID)
 			})
 
 			defer By("unbinding the service", func() {
-				service.Unbind(binding.ID)
+				service.Unbind(instanceID, binding.ID)
 			})
 
 			By("connecting to the service", func() {
@@ -151,34 +155,34 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring each binding returns unique credentials", func() {
-				binding2 := service.Bind(appID)
-				defer service.Unbind(binding2.ID)
+				binding2 := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, binding2.ID)
 				Expect(binding2.Credentials.Username).ToNot(Equal(binding.Credentials.Username))
 				Expect(binding2.Credentials.Password).ToNot(Equal(binding.Credentials.Password))
 			})
 
 			By("ensuring each binding returns same database name", func() {
-				binding2 := service.Bind(appID)
-				defer service.Unbind(binding2.ID)
+				binding2 := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, binding2.ID)
 				Expect(binding2.Credentials.Name).To(Equal(binding.Credentials.Name))
 			})
 
 			By("ensuring unbind then rebind to same appID rotates credentials", func() {
-				binding := service.Bind(appID)
+				binding := service.Bind(instanceID, appID)
 				username := binding.Credentials.Username
 				password := binding.Credentials.Password
 				name := binding.Credentials.Name
-				service.Unbind(binding.ID)
-				rebinding := service.Bind(appID)
-				defer service.Unbind(rebinding.ID)
+				service.Unbind(instanceID, binding.ID)
+				rebinding := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, rebinding.ID)
 				Expect(rebinding.Credentials.Username).ToNot(Equal(username))
 				Expect(rebinding.Credentials.Password).ToNot(Equal(password))
 				Expect(rebinding.Credentials.Name).To(Equal(name))
 			})
 
 			By("ensuring second binding credentials can read previously inserted data", func() {
-				binding2 := service.Bind(appID)
-				defer service.Unbind(binding2.ID)
+				binding2 := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, binding2.ID)
 				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
@@ -193,8 +197,8 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring second binding credentials can update previously inserted data", func() {
-				binding2 := service.Bind(appID)
-				defer service.Unbind(binding2.ID)
+				binding2 := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, binding2.ID)
 				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
@@ -211,8 +215,8 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring second binding credentials can insert data", func() {
-				binding2 := service.Bind(appID)
-				defer service.Unbind(binding2.ID)
+				binding2 := service.Bind(instanceID, appID)
+				defer service.Unbind(instanceID, binding2.ID)
 				conn2, err := helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
 				Expect(err).ToNot(HaveOccurred())
 				defer conn2.Close()
@@ -228,8 +232,8 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring revoked bindings disallow connecting", func() {
-				revokedBinding := service.Bind(appID)
-				service.Unbind(revokedBinding.ID)
+				revokedBinding := service.Bind(instanceID, appID)
+				service.Unbind(instanceID, revokedBinding.ID)
 				_, err := helper.MongoConnection(revokedBinding.Credentials.URI, revokedBinding.Credentials.CACertificateBase64)
 				Expect(err).To(HaveOccurred())
 			})
@@ -244,6 +248,71 @@ var _ = Describe("Broker Compose Integration", func() {
 				db := conn.DB(binding.Credentials.Name)
 				err := db.C("people").DropCollection()
 				Expect(err).ToNot(HaveOccurred())
+			})
+
+			By("inserting data for backup test", func() {
+				conn.EnsureSafe(&mgo.Safe{W: 3, FSync: true})
+				db := conn.DB(binding.Credentials.Name)
+				err := db.C("people").Insert(struct {
+					Name  string
+					Phone string
+				}{
+					Name:  "Backup Bob",
+					Phone: "+44123123123",
+				})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			By("ensuring we have a backup", func() {
+				deploymentName := fmt.Sprintf("%s-%s", service.Cfg.DBPrefix, instanceID)
+				deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
+				Expect(errs).To(BeNil())
+				recipe, errs := service.ComposeClient.StartBackupForDeployment(deployment.ID)
+				Expect(errs).To(BeNil())
+				Eventually(func() bool {
+					recipe, err := service.ComposeClient.GetRecipe(recipe.ID)
+					return err == nil && recipe.Status == "complete"
+				}, 15*time.Minute, 30*time.Second).Should(BeTrue())
+			})
+
+			By("creating a new service instance from backup", func() {
+				instanceID2 = service.Provision(map[string]interface{}{"restore_from_latest_snapshot_of": instanceID})
+			})
+
+			defer By("deprovisioning the service created from backup", func() {
+				service.Deprovision(instanceID2)
+			})
+
+			By("binding the app to the service created from backup", func() {
+				binding2 = service.Bind(instanceID2, appID)
+			})
+
+			defer By("unbinding the service created from backup", func() {
+				service.Unbind(instanceID2, binding2.ID)
+			})
+
+			By("connecting to the service created from backup", func() {
+				var err error
+				conn2, err = helper.MongoConnection(binding2.Credentials.URI, binding2.Credentials.CACertificateBase64)
+				Expect(err).ToNot(HaveOccurred())
+				err = conn2.Ping()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			defer By("disconnecting from the service created from backup", func() {
+				conn2.Close()
+			})
+
+			By("ensuring the service created from backup contains the data from the other instance", func() {
+				db := conn2.DB(binding2.Credentials.Name)
+				result := struct {
+					Name  string
+					Phone string
+				}{}
+				err := db.C("people").Find(bson.M{"name": "Backup Bob"}).One(&result)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result.Name).To(Equal("Backup Bob"))
+				Expect(result.Phone).To(Equal("+44123123123"))
 			})
 
 		})

@@ -20,7 +20,9 @@ func findDeployment(c compose.Client, name string) (*composeapi.Deployment, erro
 		}
 		return nil, compose.SquashErrors(errs)
 	}
-
+	if deployment == nil {
+		return nil, errDeploymentNotFound
+	}
 	return deployment, nil
 }
 
@@ -48,4 +50,17 @@ func MakeInstanceName(dbPrefix, instanceID string) (string, error) {
 		return "", errors.New("instanceID can't be empty")
 	}
 	return fmt.Sprintf("%s-%s", strings.TrimSpace(dbPrefix), instanceID), nil
+}
+
+func newestRestorableBackup(backups []composeapi.Backup) *composeapi.Backup {
+	var newest *composeapi.Backup
+	for i, backup := range backups {
+		if !backup.IsRestorable {
+			continue
+		}
+		if newest == nil || backup.CreatedAt.After(newest.CreatedAt) {
+			newest = &backups[i]
+		}
+	}
+	return newest
 }

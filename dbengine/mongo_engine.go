@@ -64,12 +64,12 @@ func dialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *
 func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interface{}, error) {
 	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get master dial info: %s", err.Error())
 	}
 
 	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to MongoDB: %s", err.Error())
 	}
 	defer session.Close()
 
@@ -77,7 +77,7 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interfa
 	username := makeUserName(bindingID)
 	password, err := makeRandomPassword(passwordLength)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate password: %s", err.Error())
 	}
 
 	err = session.DB(dbname).UpsertUser(&mgo.User{
@@ -86,7 +86,7 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interfa
 		Roles:    []mgo.Role{mgo.RoleReadWrite},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create user in MongoDB: %s", err.Error())
 	}
 
 	bindDialInfo := masterDialInfo

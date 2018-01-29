@@ -17,10 +17,11 @@ var _ = Describe("whitelisting deployments", func() {
 	)
 
 	var (
-		service *helper.ServiceHelper
-		binding *helper.BindingData
-		conn    redis.Conn
-		appID   string
+		service    *helper.ServiceHelper
+		instanceID string
+		binding    *helper.BindingData
+		conn       redis.Conn
+		appID      string
 	)
 
 	BeforeEach(func() {
@@ -37,23 +38,23 @@ var _ = Describe("whitelisting deployments", func() {
 		})
 
 		By("provisioning a service", func() {
-			service.Provision()
+			instanceID = service.Provision(map[string]interface{}{})
 		})
 
 		defer By("deprovisioning the service", func() {
-			service.Deprovision()
+			service.Deprovision(instanceID)
 		})
 
 		By("binding a resource to the service", func() {
-			binding = service.Bind(appID)
+			binding = service.Bind(instanceID, appID)
 		})
 
 		defer By("unbinding the service", func() {
-			service.Unbind(binding.ID)
+			service.Unbind(instanceID, binding.ID)
 		})
 
 		By("ensuring that whitelist is set", func() {
-			deploymentName, err := broker.MakeInstanceName(service.Cfg.DBPrefix, service.InstanceID)
+			deploymentName, err := broker.MakeInstanceName(service.Cfg.DBPrefix, instanceID)
 			Expect(err).NotTo(HaveOccurred())
 			deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
 			Expect(errs).To(BeEmpty())
