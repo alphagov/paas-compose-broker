@@ -9,6 +9,17 @@ import (
 	composeapi "github.com/compose/gocomposeapi"
 )
 
+type ElasticSearchCredentials struct {
+	Host                string `json:"host"`
+	Port                string `json:"port"`
+	Name                string `json:"name"`
+	Username            string `json:"username"`
+	Password            string `json:"password"`
+	URI                 string `json:"uri"`
+	CACertificateBase64 string `json:"ca_certificate_base64"`
+	AuthSource          string `json:"auth_source"`
+}
+
 type ElasticSearchEngine struct {
 	deployment *composeapi.Deployment
 }
@@ -17,7 +28,7 @@ func NewElasticSearchEngine(deployment *composeapi.Deployment) *ElasticSearchEng
 	return &ElasticSearchEngine{deployment}
 }
 
-func (e *ElasticSearchEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
+func (e *ElasticSearchEngine) GenerateCredentials(instanceID, bindingID string) (interface{}, error) {
 	if e.deployment == nil {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
 	} else if len(e.deployment.Connection.Direct) < 1 {
@@ -49,13 +60,12 @@ func (e *ElasticSearchEngine) GenerateCredentials(instanceID, bindingID string) 
 	}
 
 	password, _ := u.User.Password()
-	return &Credentials{
+	return &ElasticSearchCredentials{
 		Host:                u.Hostname(),
 		Port:                u.Port(),
 		URI:                 u.String(),
 		Username:            u.User.Username(),
 		Password:            password,
-		Name:                "",
 		CACertificateBase64: e.deployment.CACertificateBase64,
 	}, nil
 }

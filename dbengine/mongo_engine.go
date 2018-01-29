@@ -18,6 +18,17 @@ const (
 	passwordLength = 32
 )
 
+type MongoCredentials struct {
+	Host                string `json:"host"`
+	Port                string `json:"port"`
+	Name                string `json:"name"`
+	Username            string `json:"username"`
+	Password            string `json:"password"`
+	URI                 string `json:"uri"`
+	CACertificateBase64 string `json:"ca_certificate_base64"`
+	AuthSource          string `json:"auth_source,omitempty"`
+}
+
 type MongoEngine struct {
 	deployment *composeapi.Deployment
 }
@@ -26,7 +37,7 @@ func NewMongoEngine(deployment *composeapi.Deployment) *MongoEngine {
 	return &MongoEngine{deployment}
 }
 
-func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
+func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interface{}, error) {
 
 	masterCredentials, err := e.getMasterCredentials()
 	if err != nil {
@@ -54,7 +65,7 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 		return nil, err
 	}
 
-	return &Credentials{
+	return &MongoCredentials{
 		Host:     masterCredentials.Host,
 		Port:     masterCredentials.Port,
 		Name:     dbname,
@@ -70,7 +81,7 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 	}, nil
 }
 
-func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
+func newMongoSession(credentials *MongoCredentials) (*mgo.Session, error) {
 	roots := x509.NewCertPool()
 	ca, err := base64.StdEncoding.DecodeString(credentials.CACertificateBase64)
 	if err != nil {
@@ -110,7 +121,7 @@ func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
 	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
 }
 
-func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
+func (e *MongoEngine) getMasterCredentials() (*MongoCredentials, error) {
 	if e.deployment == nil {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
 	} else if len(e.deployment.Connection.Direct) < 1 {
@@ -124,7 +135,7 @@ func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
 		return nil, err
 	}
 	password, _ := mongoURL.User.Password()
-	return &Credentials{
+	return &MongoCredentials{
 		Host: mongoURL.Hostname(),
 		// FIXME: Follow up story should fix mongo connection string handling.
 		// Right now we are hardcoding first host from the comma delimited list that Compose provides.

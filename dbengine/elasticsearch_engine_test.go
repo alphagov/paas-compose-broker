@@ -19,8 +19,9 @@ var _ = Describe("ElasticSearch", func() {
 					Direct: []string{"http://user:password@singlehost.com:10765/?ssl=true"},
 				},
 			})
-			creds, err := engine.GenerateCredentials("inst1", "bind1")
+			icreds, err := engine.GenerateCredentials("inst1", "bind1")
 			Expect(err).ToNot(HaveOccurred())
+			creds := icreds.(*ElasticSearchCredentials)
 			Expect(creds.Username).To(Equal("user"))
 			Expect(creds.Password).To(Equal("password"))
 			Expect(creds.Host).To(Equal("singlehost.com"))
@@ -33,8 +34,9 @@ var _ = Describe("ElasticSearch", func() {
 					Direct: []string{"http://user:password@host.com:10764,nothost.com:10361/?ssl=true"},
 				},
 			})
-			creds, err := engine.GenerateCredentials("inst1", "bind1")
+			icreds, err := engine.GenerateCredentials("inst1", "bind1")
 			Expect(err).ToNot(HaveOccurred())
+			creds := icreds.(*ElasticSearchCredentials)
 			Expect(creds.Username).To(Equal("user"))
 			Expect(creds.Password).To(Equal("password"))
 			Expect(creds.Host).To(Equal("host.com"))
@@ -57,8 +59,9 @@ var _ = Describe("ElasticSearch", func() {
 					Direct: []string{"http://user:password@cluster-name-c002.compose.direct:10764/?ssl=true"},
 				},
 			})
-			creds, err := engine.GenerateCredentials("inst1", "bind1")
+			icreds, err := engine.GenerateCredentials("inst1", "bind1")
 			Expect(err).ToNot(HaveOccurred())
+			creds := icreds.(*ElasticSearchCredentials)
 			Expect(creds.Host).To(Equal("cluster-name-c00.2.compose.direct"))
 		})
 
