@@ -111,5 +111,18 @@ var _ = Describe("ElasticSearch", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(creds).To(BeNil())
 		})
+
+		It("should return the CA Certificate", func() {
+			engine = NewElasticSearchEngine(&composeapi.Deployment{
+				Connection: composeapi.ConnectionStrings{
+					Direct: []string{"http://user:password@singlehost.com:10765/?ssl=true"},
+				},
+				CACertificateBase64: "mylovelycertificate",
+			})
+			icreds, err := engine.GenerateCredentials("inst1", "bind1")
+			Expect(err).ToNot(HaveOccurred())
+			creds := icreds.(*ElasticSearchCredentials)
+			Expect(creds.CACertificateBase64).To(Equal("mylovelycertificate"))
+		})
 	})
 })
