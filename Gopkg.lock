@@ -10,7 +10,7 @@
   branch = "gds_master"
   name = "github.com/compose/gocomposeapi"
   packages = ["."]
-  revision = "3bbf8c7d13c44a5a5059820a6eb0d388ece64a80"
+  revision = "9d92f9fef2059be73bf1214c1f7865ca4e310bed"
   source = "github.com/alphagov/paas-gocomposeapi"
 
 [[projects]]
