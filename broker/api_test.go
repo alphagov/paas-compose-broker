@@ -555,7 +555,7 @@ var _ = Describe("Broker API", func() {
 			))
 			Expect(resp.Code).To(Equal(201))
 			var data struct {
-				Credentials map[string]string `json:"credentials"`
+				Credentials map[string]interface{} `json:"credentials"`
 			}
 			err := json.NewDecoder(resp.Body).Decode(&data)
 			Expect(err).ToNot(HaveOccurred())

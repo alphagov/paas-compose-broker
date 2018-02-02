@@ -18,6 +18,16 @@ const (
 	passwordLength = 32
 )
 
+type MongoCredentials struct {
+	Hosts               []string `json:"hosts"`
+	Name                string   `json:"name"`
+	Username            string   `json:"username"`
+	Password            string   `json:"password"`
+	URI                 string   `json:"uri"`
+	CACertificateBase64 string   `json:"ca_certificate_base64"`
+	AuthSource          string   `json:"auth_source,omitempty"`
+}
+
 type MongoEngine struct {
 	deployment *composeapi.Deployment
 }
@@ -26,13 +36,38 @@ func NewMongoEngine(deployment *composeapi.Deployment) *MongoEngine {
 	return &MongoEngine{deployment}
 }
 
-func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Credentials, error) {
+func dialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *MongoCredentials {
+	baseURI := url.URL{
+		Scheme: "mongodb",
+		User:   url.UserPassword(dialInfo.Username, dialInfo.Password),
+		Host:   "mongo-db-host-place-holder",
+		Path:   dialInfo.Database,
+	}
 
-	masterCredentials, err := e.getMasterCredentials()
+	mongoURI := strings.Replace(
+		baseURI.String(),
+		"mongo-db-host-place-holder",
+		strings.Join(dialInfo.Addrs, ","),
+		-1,
+	)
+
+	return &MongoCredentials{
+		Hosts:               dialInfo.Addrs,
+		Name:                dialInfo.Database,
+		Username:            dialInfo.Username,
+		Password:            dialInfo.Password,
+		URI:                 mongoURI,
+		CACertificateBase64: caCertificateBase64,
+	}
+}
+
+func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interface{}, error) {
+	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
 		return nil, err
 	}
-	session, err := newMongoSession(masterCredentials)
+
+	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -54,55 +89,20 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (*Creden
 		return nil, err
 	}
 
-	return &Credentials{
-		Host:     masterCredentials.Host,
-		Port:     masterCredentials.Port,
-		Name:     dbname,
-		Username: username,
-		Password: password,
-		URI: (&url.URL{
-			Scheme: "mongodb",
-			User:   url.UserPassword(username, password),
-			Host:   masterCredentials.Host + ":" + masterCredentials.Port,
-			Path:   dbname,
-		}).String(),
-		CACertificateBase64: e.deployment.CACertificateBase64,
-	}, nil
-}
+	bindDialInfo := masterDialInfo
+	bindDialInfo.Database = dbname
+	bindDialInfo.Username = username
+	bindDialInfo.Password = password
 
-func newMongoSession(credentials *Credentials) (*mgo.Session, error) {
-	roots := x509.NewCertPool()
-	ca, err := base64.StdEncoding.DecodeString(credentials.CACertificateBase64)
-	if err != nil {
-		return nil, err
-	}
-
-	roots.AppendCertsFromPEM(ca)
-	tlsConfig := &tls.Config{}
-	tlsConfig.RootCAs = roots
-
-	dialInfo := mgo.DialInfo{
-		Addrs:    []string{credentials.Host + ":" + credentials.Port},
-		Database: credentials.Name,
-		Timeout:  10 * time.Second,
-		Username: credentials.Username,
-		Password: credentials.Password,
-		Source:   credentials.AuthSource,
-		DialServer: func(addr *mgo.ServerAddr) (net.Conn, error) {
-			conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
-			return conn, err
-		},
-	}
-
-	return mgo.DialWithInfo(&dialInfo)
+	return dialInfoToCredentials(bindDialInfo, e.deployment.CACertificateBase64), nil
 }
 
 func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
-	masterCredentials, err := e.getMasterCredentials()
+	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
 		return err
 	}
-	session, err := newMongoSession(masterCredentials)
+	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
 	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
 }
 
-func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
+func (e *MongoEngine) getMasterDialInfo() (*mgo.DialInfo, error) {
 	if e.deployment == nil {
 		return nil, fmt.Errorf("no deployment provided: cannot parse the connection string")
 	} else if len(e.deployment.Connection.Direct) < 1 {
@@ -119,23 +119,48 @@ func (e *MongoEngine) getMasterCredentials() (*Credentials, error) {
 		return nil, fmt.Errorf("connection string is empty")
 	}
 
-	mongoURL, err := url.Parse(e.deployment.Connection.Direct[0])
+	u, err := removeSSLOption(e.deployment.Connection.Direct[0])
 	if err != nil {
 		return nil, err
 	}
-	password, _ := mongoURL.User.Password()
-	return &Credentials{
-		Host: mongoURL.Hostname(),
-		// FIXME: Follow up story should fix mongo connection string handling.
-		// Right now we are hardcoding first host from the comma delimited list that Compose provides.
-		// url.Parse() parses mongo connection string wrongly and doesn't return an error
-		// so url.Port() returns port like "18899,aws-eu-west-1-portal.7.dblayer.com:18899"
-		Port:                strings.Split(mongoURL.Port(), ",")[0],
-		URI:                 mongoURL.String(),
-		Username:            mongoURL.User.Username(),
-		Password:            password,
-		Name:                strings.Split(mongoURL.EscapedPath(), "/")[1],
-		CACertificateBase64: e.deployment.CACertificateBase64,
-		AuthSource:          mongoURL.Query().Get("authSource"),
+
+	dialInfo, err := mgo.ParseURL(u)
+	if err != nil {
+		return nil, err
+	}
+	dialInfo.Timeout = 10 * time.Second
+	dialInfo.DialServer, err = createDialServer(e.deployment.CACertificateBase64)
+	if err != nil {
+		return nil, err
+	}
+
+	return dialInfo, nil
+}
+
+func removeSSLOption(uri string) (string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return uri, err
+	}
+	q, _ := url.ParseQuery(u.RawQuery)
+	q.Del("ssl")
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+func createDialServer(caCert string) (func(*mgo.ServerAddr) (net.Conn, error), error) {
+	roots := x509.NewCertPool()
+	ca, err := base64.StdEncoding.DecodeString(caCert)
+	if err != nil {
+		return nil, err
+	}
+	roots.AppendCertsFromPEM(ca)
+
+	tlsConfig := &tls.Config{}
+	tlsConfig.RootCAs = roots
+
+	return func(addr *mgo.ServerAddr) (net.Conn, error) {
+		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
+		return conn, err
 	}, nil
 }
