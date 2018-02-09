@@ -57,7 +57,7 @@ var _ = Describe("Broker Compose Integration", func() {
 
 			By("ensuring binding credentials allow connecting to the service", func() {
 				var err error
-				conn, err = redis.DialURL(binding.Credentials.URI)
+				conn, err = redis.DialURL(binding.Credentials.URI, redis.DialTLSSkipVerify(true))
 				Expect(err).ToNot(HaveOccurred())
 			})
 
