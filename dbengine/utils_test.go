@@ -14,13 +14,6 @@ var _ = Describe("Broker utility functions", func() {
 			})
 		})
 
-		Describe("makeDatabaseName", func() {
-			It("can make a database name", func() {
-				userName := makeDatabaseName("62a334e8-5afa-7c41-92a3-a44b18eba448")
-				Expect(userName).To(Equal("db_62a334e8-5afa-7c41-92a3-a44b18eba448"))
-			})
-		})
-
 		Describe("makeRandomPassword", func() {
 			It("can make a random password", func() {
 				By("generating strings of at least a given length", func() {

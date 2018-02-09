@@ -251,9 +251,15 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("inserting data for backup test", func() {
-				conn.EnsureSafe(&mgo.Safe{W: 3, FSync: true})
+				conn.SetSafe(&mgo.Safe{
+					W:        3,
+					FSync:    true,
+					WTimeout: 30 * 1000,
+				})
+				defer conn.SetSafe(&mgo.Safe{})
+
 				db := conn.DB(binding.Credentials.Name)
-				err := db.C("people").Insert(struct {
+				err := db.C("backup").Insert(struct {
 					Name  string
 					Phone string
 				}{
@@ -264,6 +270,7 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("ensuring we have a backup", func() {
+				time.Sleep(1 * time.Minute)
 				deploymentName := fmt.Sprintf("%s-%s", service.Cfg.DBPrefix, instanceID)
 				deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
 				Expect(errs).To(BeNil())
@@ -309,7 +316,7 @@ var _ = Describe("Broker Compose Integration", func() {
 					Name  string
 					Phone string
 				}{}
-				err := db.C("people").Find(bson.M{"name": "Backup Bob"}).One(&result)
+				err := db.C("backup").Find(bson.M{"name": "Backup Bob"}).One(&result)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Name).To(Equal("Backup Bob"))
 				Expect(result.Phone).To(Equal("+44123123123"))
