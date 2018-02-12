@@ -107,12 +107,11 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	provisionParameters := ProvisionParameters{}
+	provisionParameters := &ProvisionParameters{}
 	if len(details.RawParameters) > 0 {
-		if err := json.Unmarshal(details.RawParameters, &provisionParameters); err != nil {
-			return brokerapi.ProvisionedServiceSpec{}, err
-		}
-		if err := provisionParameters.Validate(); err != nil {
+		var err error
+		provisionParameters, err = ParseProvisionParameters(details.RawParameters)
+		if err != nil {
 			return brokerapi.ProvisionedServiceSpec{}, err
 		}
 	}

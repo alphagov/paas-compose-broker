@@ -342,54 +342,33 @@ var _ = Describe("Broker API", func() {
 				To(MatchJSON(`{"description":"malformed response from Compose: no pending whitelist recipe received"}`))
 		})
 
-		It("ignores user provided parameters", func() {
-			instanceID := uuid.NewV4().String()
-			fakeComposeClient.CreateDeploymentReturns(&composeapi.Deployment{ID: "1", ProvisionRecipeID: "provision-recipe-id"}, []error{})
-			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(0, &composeapi.Recipe{ID: "id-for-1.1.1.1", Status: "complete"}, []error{})
-			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(1, &composeapi.Recipe{ID: "id-for-2.2.2.2", Status: "complete"}, []error{})
-			fakeComposeClient.CreateDeploymentWhitelistReturnsOnCall(2, &composeapi.Recipe{ID: "id-for-3.3.3.3", Status: "complete"}, []error{})
-
-			resp := DoRequest(brokerAPI, NewRequest(
-				"PUT",
-				"/v2/service_instances/"+instanceID,
-				strings.NewReader(fmt.Sprintf(`{
-						"service_id": "%s",
-						"plan_id": "%s",
-						"organization_guid": "test-organization-id",
-						"space_guid": "space-id",
-						"parameters": {
-							"disable_ssl": true,
-							"wired_tiger": true,
-							"version": "1"
-						}
-					}`, service.ID, service.Plans[0].ID)),
-				cfg.Username,
-				cfg.Password,
-				UriParam{Key: "accepts_incomplete", Value: "true"},
-			))
-			Expect(resp.Code).To(Equal(202))
-			body := ReadResponseBody(resp.Body)
-			Expect(body).To(MatchOperationJSON(`
-			{
-			  "recipe_id":"provision-recipe-id",
-			  "type":"provision",
-			  "whitelist_recipe_ids":["id-for-1.1.1.1","id-for-2.2.2.2","id-for-3.3.3.3"]
-			}
-			`))
-
-			expectedDeploymentParams := composeapi.DeploymentParams{
-				Name:                fmt.Sprintf("%s-%s", cfg.DBPrefix, instanceID),
-				AccountID:           "1",
-				Datacenter:          broker.ComposeDatacenter,
-				DatabaseType:        "fakedb",
-				Units:               1,
-				SSL:                 true,
-				WiredTiger:          false,
-				Version:             "",
-				ClusterID:           "",
-				CustomerBillingCode: "space-id",
-			}
-			Expect(fakeComposeClient.CreateDeploymentArgsForCall(0)).To(Equal(expectedDeploymentParams))
+		Context("paramaters contain an unknown key", func() {
+			It("returns with an error", func() {
+				instanceID := uuid.NewV4().String()
+				resp := DoRequest(brokerAPI, NewRequest(
+					"PUT",
+					"/v2/service_instances/"+instanceID,
+					strings.NewReader(fmt.Sprintf(`{
+							"service_id": "%s",
+							"plan_id": "%s",
+							"organization_guid": "test-organization-id",
+							"space_guid": "space-id",
+							"parameters": {
+								"unknown_key": "foo"
+							}
+						}`, service.ID, service.Plans[0].ID)),
+					cfg.Username,
+					cfg.Password,
+					UriParam{Key: "accepts_incomplete", Value: "true"},
+				))
+				Expect(resp.Code).To(Equal(500))
+				body := ReadResponseBody(resp.Body)
+				Expect(body).To(MatchJSON(`
+				{
+				  "description": "unknown parameter: unknown_key"
+				}
+				`))
+			})
 		})
 	})
 
