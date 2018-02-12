@@ -130,18 +130,10 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 			restoreFromLatestSnapshotOf: provisionParameters.RestoreFromLatestSnapshotOf,
 		})
 
-		oldInstanceName, err := MakeInstanceName(b.Config.DBPrefix, *provisionParameters.RestoreFromLatestSnapshotOf)
-		if err != nil {
-			return spec, err
-		}
-		checkOwner, errs := b.Compose.GetDeploymentByName(oldInstanceName)
-		if len(errs) > 0 {
-			return spec, fmt.Errorf("could not get cluster ID: %s", compose.SquashErrors(errs))
-		}
-		if checkOwner.CustomerBillingCode != details.SpaceGUID {
-			return spec, errors.New("you are only allowed to restore from backup to the same space")
-		}
-		deployment, err = b.createDeploymentFromLatestSnapshot(newInstanceName, oldInstanceName, details.SpaceGUID)
+		deployment, err = b.createDeploymentFromLatestSnapshot(
+			*provisionParameters.RestoreFromLatestSnapshotOf,
+			newInstanceName, details.ServiceID, details.PlanID, details.SpaceGUID,
+		)
 		if err != nil {
 			return spec, err
 		}
@@ -444,12 +436,33 @@ func (b *Broker) createDeployment(newInstanceName, serviceID, planID, spaceID st
 	return deployment, nil
 }
 
-func (b *Broker) createDeploymentFromLatestSnapshot(newInstanceName, oldInstanceName, spaceID string) (*composeapi.Deployment, error) {
-	oldDeployment, err := findDeployment(b.Compose, oldInstanceName)
-	if err == errDeploymentNotFound {
-		return nil, brokerapi.ErrInstanceDoesNotExist
-	} else if err != nil {
+func (b *Broker) createDeploymentFromLatestSnapshot(restoreFrom, newInstanceName, serviceID, planID, spaceID string) (*composeapi.Deployment, error) {
+	oldInstanceName, err := MakeInstanceName(b.Config.DBPrefix, restoreFrom)
+	if err != nil {
 		return nil, err
+	}
+
+	service, err := b.Catalog.GetService(serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := service.GetPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+
+	oldDeployment, err := findDeployment(b.Compose, oldInstanceName)
+	if err != nil {
+		return nil, fmt.Errorf("service '%s' does not exist", restoreFrom)
+	}
+
+	if oldDeployment.CustomerBillingCode != spaceID {
+		return nil, errors.New("you are only allowed to restore from backup to the same space")
+	}
+
+	if oldDeployment.Type != plan.Compose.DatabaseType {
+		return nil, errors.New("you are only allowed to restore a backup from the same service type")
 	}
 
 	oldDeploymentBackups, errs := b.Compose.GetBackupsForDeployment(oldDeployment.ID)

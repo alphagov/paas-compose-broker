@@ -407,7 +407,9 @@ var _ = Describe("Broker API", func() {
 				ID:                  oldInstanceID,
 				Name:                oldInstanceName,
 				ProvisionRecipeID:   "provision-recipe-id",
-				CustomerBillingCode: "space-id"}, nil)
+				CustomerBillingCode: "space-id",
+				Type:                "fakedb",
+			}, nil)
 			fakeComposeClient.GetBackupsForDeploymentReturns(&[]composeapi.Backup{
 				{
 					ID:           newestBackupID,
@@ -482,6 +484,7 @@ var _ = Describe("Broker API", func() {
 				Name:                oldInstanceName,
 				ProvisionRecipeID:   "provision-recipe-id",
 				CustomerBillingCode: "not-my-space-id",
+				Type:                "not-fakedb",
 			}, nil)
 			fakeComposeClient.GetBackupsForDeploymentReturns(&[]composeapi.Backup{
 				{
@@ -519,6 +522,53 @@ var _ = Describe("Broker API", func() {
 			}
 			`))
 		})
+
+		It("prevents provisioning an instance from a backup to a different service type", func() {
+			oldInstanceID := "123467"
+			oldInstanceName, err := broker.MakeInstanceName(cfg.DBPrefix, oldInstanceID)
+			Expect(err).ToNot(HaveOccurred())
+			newestBackupID := "xyz"
+
+			fakeComposeClient.GetDeploymentByNameReturns(&composeapi.Deployment{
+				ID:                  oldInstanceID,
+				Name:                oldInstanceName,
+				ProvisionRecipeID:   "provision-recipe-id",
+				CustomerBillingCode: "space-id",
+				Type:                "fakedb2",
+			}, nil)
+			fakeComposeClient.GetBackupsForDeploymentReturns(&[]composeapi.Backup{
+				{
+					ID:           newestBackupID,
+					IsRestorable: true,
+					CreatedAt:    time.Now(),
+				},
+			}, nil)
+
+			resp := DoRequest(brokerAPI, NewRequest(
+				"PUT",
+				"/v2/service_instances/"+oldInstanceID,
+				strings.NewReader(fmt.Sprintf(`{
+					"service_id": "%s",
+					"plan_id": "%s",
+					"organization_guid": "test-organization-id",
+					"space_guid": "space-id",
+					"parameters": {
+						"restore_from_latest_snapshot_of": "%s"
+					}
+				}`, service.ID, service.Plans[0].ID, oldInstanceID)),
+				cfg.Username,
+				cfg.Password,
+				UriParam{Key: "accepts_incomplete", Value: "true"},
+			))
+			Expect(resp.Code).To(Equal(500))
+			body := ReadResponseBody(resp.Body)
+			Expect(body).To(MatchJSON(`
+			{
+			  "description": "you are only allowed to restore a backup from the same service type"
+			}
+			`))
+		})
+
 	})
 
 	Describe("Provisioning an instance into cluster", func() {
