@@ -21,6 +21,10 @@ type Client interface {
 	GetWhitelistForDeployment(string) ([]composeapi.DeploymentWhitelist, []error)
 	GetRecipe(string) (*composeapi.Recipe, []error)
 	SetScalings(composeapi.ScalingsParams) (*composeapi.Recipe, []error)
+	GetBackupsForDeployment(string) (*[]composeapi.Backup, []error)
+	RestoreBackup(composeapi.RestoreBackupParams) (*composeapi.Deployment, []error)
+	PatchDeployment(composeapi.PatchDeploymentParams) (*composeapi.Deployment, []error)
+	StartBackupForDeployment(deploymentid string) (*composeapi.Recipe, []error)
 }
 
 func NewClient(apiToken string) (Client, error) {

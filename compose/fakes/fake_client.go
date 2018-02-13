@@ -160,6 +160,58 @@ type FakeClient struct {
 		result1 *composeapi.Recipe
 		result2 []error
 	}
+	GetBackupsForDeploymentStub        func(string) (*[]composeapi.Backup, []error)
+	getBackupsForDeploymentMutex       sync.RWMutex
+	getBackupsForDeploymentArgsForCall []struct {
+		arg1 string
+	}
+	getBackupsForDeploymentReturns struct {
+		result1 *[]composeapi.Backup
+		result2 []error
+	}
+	getBackupsForDeploymentReturnsOnCall map[int]struct {
+		result1 *[]composeapi.Backup
+		result2 []error
+	}
+	RestoreBackupStub        func(composeapi.RestoreBackupParams) (*composeapi.Deployment, []error)
+	restoreBackupMutex       sync.RWMutex
+	restoreBackupArgsForCall []struct {
+		arg1 composeapi.RestoreBackupParams
+	}
+	restoreBackupReturns struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}
+	restoreBackupReturnsOnCall map[int]struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}
+	PatchDeploymentStub        func(composeapi.PatchDeploymentParams) (*composeapi.Deployment, []error)
+	patchDeploymentMutex       sync.RWMutex
+	patchDeploymentArgsForCall []struct {
+		arg1 composeapi.PatchDeploymentParams
+	}
+	patchDeploymentReturns struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}
+	patchDeploymentReturnsOnCall map[int]struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}
+	StartBackupForDeploymentStub        func(deploymentid string) (*composeapi.Recipe, []error)
+	startBackupForDeploymentMutex       sync.RWMutex
+	startBackupForDeploymentArgsForCall []struct {
+		deploymentid string
+	}
+	startBackupForDeploymentReturns struct {
+		result1 *composeapi.Recipe
+		result2 []error
+	}
+	startBackupForDeploymentReturnsOnCall map[int]struct {
+		result1 *composeapi.Recipe
+		result2 []error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -753,6 +805,210 @@ func (fake *FakeClient) SetScalingsReturnsOnCall(i int, result1 *composeapi.Reci
 	}{result1, result2}
 }
 
+func (fake *FakeClient) GetBackupsForDeployment(arg1 string) (*[]composeapi.Backup, []error) {
+	fake.getBackupsForDeploymentMutex.Lock()
+	ret, specificReturn := fake.getBackupsForDeploymentReturnsOnCall[len(fake.getBackupsForDeploymentArgsForCall)]
+	fake.getBackupsForDeploymentArgsForCall = append(fake.getBackupsForDeploymentArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	fake.recordInvocation("GetBackupsForDeployment", []interface{}{arg1})
+	fake.getBackupsForDeploymentMutex.Unlock()
+	if fake.GetBackupsForDeploymentStub != nil {
+		return fake.GetBackupsForDeploymentStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.getBackupsForDeploymentReturns.result1, fake.getBackupsForDeploymentReturns.result2
+}
+
+func (fake *FakeClient) GetBackupsForDeploymentCallCount() int {
+	fake.getBackupsForDeploymentMutex.RLock()
+	defer fake.getBackupsForDeploymentMutex.RUnlock()
+	return len(fake.getBackupsForDeploymentArgsForCall)
+}
+
+func (fake *FakeClient) GetBackupsForDeploymentArgsForCall(i int) string {
+	fake.getBackupsForDeploymentMutex.RLock()
+	defer fake.getBackupsForDeploymentMutex.RUnlock()
+	return fake.getBackupsForDeploymentArgsForCall[i].arg1
+}
+
+func (fake *FakeClient) GetBackupsForDeploymentReturns(result1 *[]composeapi.Backup, result2 []error) {
+	fake.GetBackupsForDeploymentStub = nil
+	fake.getBackupsForDeploymentReturns = struct {
+		result1 *[]composeapi.Backup
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) GetBackupsForDeploymentReturnsOnCall(i int, result1 *[]composeapi.Backup, result2 []error) {
+	fake.GetBackupsForDeploymentStub = nil
+	if fake.getBackupsForDeploymentReturnsOnCall == nil {
+		fake.getBackupsForDeploymentReturnsOnCall = make(map[int]struct {
+			result1 *[]composeapi.Backup
+			result2 []error
+		})
+	}
+	fake.getBackupsForDeploymentReturnsOnCall[i] = struct {
+		result1 *[]composeapi.Backup
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) RestoreBackup(arg1 composeapi.RestoreBackupParams) (*composeapi.Deployment, []error) {
+	fake.restoreBackupMutex.Lock()
+	ret, specificReturn := fake.restoreBackupReturnsOnCall[len(fake.restoreBackupArgsForCall)]
+	fake.restoreBackupArgsForCall = append(fake.restoreBackupArgsForCall, struct {
+		arg1 composeapi.RestoreBackupParams
+	}{arg1})
+	fake.recordInvocation("RestoreBackup", []interface{}{arg1})
+	fake.restoreBackupMutex.Unlock()
+	if fake.RestoreBackupStub != nil {
+		return fake.RestoreBackupStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.restoreBackupReturns.result1, fake.restoreBackupReturns.result2
+}
+
+func (fake *FakeClient) RestoreBackupCallCount() int {
+	fake.restoreBackupMutex.RLock()
+	defer fake.restoreBackupMutex.RUnlock()
+	return len(fake.restoreBackupArgsForCall)
+}
+
+func (fake *FakeClient) RestoreBackupArgsForCall(i int) composeapi.RestoreBackupParams {
+	fake.restoreBackupMutex.RLock()
+	defer fake.restoreBackupMutex.RUnlock()
+	return fake.restoreBackupArgsForCall[i].arg1
+}
+
+func (fake *FakeClient) RestoreBackupReturns(result1 *composeapi.Deployment, result2 []error) {
+	fake.RestoreBackupStub = nil
+	fake.restoreBackupReturns = struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) RestoreBackupReturnsOnCall(i int, result1 *composeapi.Deployment, result2 []error) {
+	fake.RestoreBackupStub = nil
+	if fake.restoreBackupReturnsOnCall == nil {
+		fake.restoreBackupReturnsOnCall = make(map[int]struct {
+			result1 *composeapi.Deployment
+			result2 []error
+		})
+	}
+	fake.restoreBackupReturnsOnCall[i] = struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) PatchDeployment(arg1 composeapi.PatchDeploymentParams) (*composeapi.Deployment, []error) {
+	fake.patchDeploymentMutex.Lock()
+	ret, specificReturn := fake.patchDeploymentReturnsOnCall[len(fake.patchDeploymentArgsForCall)]
+	fake.patchDeploymentArgsForCall = append(fake.patchDeploymentArgsForCall, struct {
+		arg1 composeapi.PatchDeploymentParams
+	}{arg1})
+	fake.recordInvocation("PatchDeployment", []interface{}{arg1})
+	fake.patchDeploymentMutex.Unlock()
+	if fake.PatchDeploymentStub != nil {
+		return fake.PatchDeploymentStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.patchDeploymentReturns.result1, fake.patchDeploymentReturns.result2
+}
+
+func (fake *FakeClient) PatchDeploymentCallCount() int {
+	fake.patchDeploymentMutex.RLock()
+	defer fake.patchDeploymentMutex.RUnlock()
+	return len(fake.patchDeploymentArgsForCall)
+}
+
+func (fake *FakeClient) PatchDeploymentArgsForCall(i int) composeapi.PatchDeploymentParams {
+	fake.patchDeploymentMutex.RLock()
+	defer fake.patchDeploymentMutex.RUnlock()
+	return fake.patchDeploymentArgsForCall[i].arg1
+}
+
+func (fake *FakeClient) PatchDeploymentReturns(result1 *composeapi.Deployment, result2 []error) {
+	fake.PatchDeploymentStub = nil
+	fake.patchDeploymentReturns = struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) PatchDeploymentReturnsOnCall(i int, result1 *composeapi.Deployment, result2 []error) {
+	fake.PatchDeploymentStub = nil
+	if fake.patchDeploymentReturnsOnCall == nil {
+		fake.patchDeploymentReturnsOnCall = make(map[int]struct {
+			result1 *composeapi.Deployment
+			result2 []error
+		})
+	}
+	fake.patchDeploymentReturnsOnCall[i] = struct {
+		result1 *composeapi.Deployment
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) StartBackupForDeployment(deploymentid string) (*composeapi.Recipe, []error) {
+	fake.startBackupForDeploymentMutex.Lock()
+	ret, specificReturn := fake.startBackupForDeploymentReturnsOnCall[len(fake.startBackupForDeploymentArgsForCall)]
+	fake.startBackupForDeploymentArgsForCall = append(fake.startBackupForDeploymentArgsForCall, struct {
+		deploymentid string
+	}{deploymentid})
+	fake.recordInvocation("StartBackupForDeployment", []interface{}{deploymentid})
+	fake.startBackupForDeploymentMutex.Unlock()
+	if fake.StartBackupForDeploymentStub != nil {
+		return fake.StartBackupForDeploymentStub(deploymentid)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.startBackupForDeploymentReturns.result1, fake.startBackupForDeploymentReturns.result2
+}
+
+func (fake *FakeClient) StartBackupForDeploymentCallCount() int {
+	fake.startBackupForDeploymentMutex.RLock()
+	defer fake.startBackupForDeploymentMutex.RUnlock()
+	return len(fake.startBackupForDeploymentArgsForCall)
+}
+
+func (fake *FakeClient) StartBackupForDeploymentArgsForCall(i int) string {
+	fake.startBackupForDeploymentMutex.RLock()
+	defer fake.startBackupForDeploymentMutex.RUnlock()
+	return fake.startBackupForDeploymentArgsForCall[i].deploymentid
+}
+
+func (fake *FakeClient) StartBackupForDeploymentReturns(result1 *composeapi.Recipe, result2 []error) {
+	fake.StartBackupForDeploymentStub = nil
+	fake.startBackupForDeploymentReturns = struct {
+		result1 *composeapi.Recipe
+		result2 []error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) StartBackupForDeploymentReturnsOnCall(i int, result1 *composeapi.Recipe, result2 []error) {
+	fake.StartBackupForDeploymentStub = nil
+	if fake.startBackupForDeploymentReturnsOnCall == nil {
+		fake.startBackupForDeploymentReturnsOnCall = make(map[int]struct {
+			result1 *composeapi.Recipe
+			result2 []error
+		})
+	}
+	fake.startBackupForDeploymentReturnsOnCall[i] = struct {
+		result1 *composeapi.Recipe
+		result2 []error
+	}{result1, result2}
+}
+
 func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -780,6 +1036,14 @@ func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	defer fake.getRecipeMutex.RUnlock()
 	fake.setScalingsMutex.RLock()
 	defer fake.setScalingsMutex.RUnlock()
+	fake.getBackupsForDeploymentMutex.RLock()
+	defer fake.getBackupsForDeploymentMutex.RUnlock()
+	fake.restoreBackupMutex.RLock()
+	defer fake.restoreBackupMutex.RUnlock()
+	fake.patchDeploymentMutex.RLock()
+	defer fake.patchDeploymentMutex.RUnlock()
+	fake.startBackupForDeploymentMutex.RLock()
+	defer fake.startBackupForDeploymentMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

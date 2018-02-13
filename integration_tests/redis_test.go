@@ -18,10 +18,11 @@ var _ = Describe("Broker Compose Integration", func() {
 		)
 
 		var (
-			service *helper.ServiceHelper
-			binding *helper.BindingData
-			conn    redis.Conn
-			appID   string
+			service    *helper.ServiceHelper
+			instanceID string
+			binding    *helper.BindingData
+			conn       redis.Conn
+			appID      string
 		)
 
 		BeforeEach(func() {
@@ -39,24 +40,24 @@ var _ = Describe("Broker Compose Integration", func() {
 			})
 
 			By("provisioning a service", func() {
-				service.Provision()
+				instanceID = service.Provision(map[string]interface{}{})
 			})
 
 			defer By("deprovisioning the service", func() {
-				service.Deprovision()
+				service.Deprovision(instanceID)
 			})
 
 			By("binding a resource to the service", func() {
-				binding = service.Bind(appID)
+				binding = service.Bind(instanceID, appID)
 			})
 
 			defer By("unbinding the service", func() {
-				service.Unbind(binding.ID)
+				service.Unbind(instanceID, binding.ID)
 			})
 
 			By("ensuring binding credentials allow connecting to the service", func() {
 				var err error
-				conn, err = redis.DialURL(binding.Credentials.URI)
+				conn, err = redis.DialURL(binding.Credentials.URI, redis.DialTLSSkipVerify(true))
 				Expect(err).ToNot(HaveOccurred())
 			})
 

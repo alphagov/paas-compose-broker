@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -21,6 +20,7 @@ import (
 	mgo "gopkg.in/mgo.v2"
 
 	"code.cloudfoundry.org/lager"
+	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-cf/brokerapi"
@@ -44,18 +44,20 @@ type UriParam struct {
 	Value string
 }
 
-func NewRequest(method, path string, body io.Reader, username, password string, params ...UriParam) *http.Request {
-	brokerUrl := fmt.Sprintf("http://%s", "127.0.0.1:8080"+path)
-	req := httptest.NewRequest(method, brokerUrl, body)
-	if username != "" {
-		req.SetBasicAuth(username, password)
+func NewRequest(method, path string, body []byte, username, password string, params ...UriParam) func() *http.Request {
+	return func() *http.Request {
+		brokerUrl := fmt.Sprintf("http://%s", "127.0.0.1:8080"+path)
+		req := httptest.NewRequest(method, brokerUrl, bytes.NewReader(body))
+		if username != "" {
+			req.SetBasicAuth(username, password)
+		}
+		q := req.URL.Query()
+		for _, p := range params {
+			q.Add(p.Key, p.Value)
+		}
+		req.URL.RawQuery = q.Encode()
+		return req
 	}
-	q := req.URL.Query()
-	for _, p := range params {
-		q.Add(p.Key, p.Value)
-	}
-	req.URL.RawQuery = q.Encode()
-	return req
 }
 
 func ReadResponseBody(responseBody *bytes.Buffer) []byte {
@@ -86,8 +88,8 @@ func PollForOperationCompletion(cfg *config.Config, brokerAPI http.Handler, inst
 				UriParam{Key: "plan_id", Value: planID},
 				UriParam{Key: "operation", Value: operation},
 			)
-			resp := DoRequest(brokerAPI, req)
-			Expect(resp.Code).To(Equal(200))
+
+			resp := DoRequest(brokerAPI, req, 200)
 
 			var lastOperation map[string]string
 			err := json.NewDecoder(resp.Body).Decode(&lastOperation)
@@ -108,9 +110,13 @@ func PollForOperationCompletion(cfg *config.Config, brokerAPI http.Handler, inst
 	return state
 }
 
-func DoRequest(server http.Handler, req *http.Request) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
+func DoRequest(server http.Handler, req func() *http.Request, expectedCode int) *httptest.ResponseRecorder {
+	var w *httptest.ResponseRecorder
+	Eventually(func() int {
+		w = httptest.NewRecorder()
+		server.ServeHTTP(w, req())
+		return w.Code
+	}, 1*time.Minute, 15*time.Second).Should(Equal(expectedCode))
 	return w
 }
 
@@ -128,7 +134,6 @@ type BindingData struct {
 }
 
 type ServiceHelper struct {
-	InstanceID     string
 	ServiceID      string
 	PlanID         string
 	Catalog        *catalog.Catalog
@@ -140,30 +145,32 @@ type ServiceHelper struct {
 	Provider       dbengine.Provider
 }
 
-func (s *ServiceHelper) Bind(appID string) (binding *BindingData) {
+func (s *ServiceHelper) Bind(instanceID, appID string) (binding *BindingData) {
 	binding = &BindingData{
 		ID:    NewUUID(),
 		AppID: appID,
 	}
+	request := map[string]interface{}{
+		"service_id": s.ServiceID,
+		"plan_id":    s.PlanID,
+		"bind_resource": map[string]interface{}{
+			"app_guid": binding.AppID,
+		},
+		"parameters": map[string]interface{}{},
+	}
+	requestJSON, err := json.Marshal(request)
+	Expect(err).ToNot(HaveOccurred())
+
 	resp := DoRequest(s.BrokerAPI, NewRequest(
 		"PUT",
-		fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", s.InstanceID, binding.ID),
-		strings.NewReader(fmt.Sprintf(`{
-			"service_id": "%s",
-			"plan_id": "%s",
-			"bind_resource": {
-				"app_guid": "%s"
-			},
-			"parameters": "{}"
-		}`, s.ServiceID, s.PlanID, binding.AppID)),
+		fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, binding.ID),
+		requestJSON,
 		s.Cfg.Username,
 		s.Cfg.Password,
 		UriParam{Key: "accepts_incomplete", Value: "true"},
-	))
+	), 201)
 
-	Expect(resp.Code).To(Equal(201))
-
-	err := json.NewDecoder(resp.Body).Decode(&binding)
+	err = json.NewDecoder(resp.Body).Decode(&binding)
 	Expect(err).ToNot(HaveOccurred())
 
 	Expect(binding.Credentials.URI).NotTo(BeEmpty())
@@ -174,77 +181,79 @@ func (s *ServiceHelper) Bind(appID string) (binding *BindingData) {
 	return binding
 }
 
-func (s *ServiceHelper) Unbind(bindingID string) {
+func (s *ServiceHelper) Unbind(instanceID, bindingID string) {
 	resp := DoRequest(s.BrokerAPI, NewRequest(
 		"DELETE",
-		fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", s.InstanceID, bindingID),
+		fmt.Sprintf("/v2/service_instances/%s/service_bindings/%s", instanceID, bindingID),
 		nil,
 		s.Cfg.Username,
 		s.Cfg.Password,
 		UriParam{Key: "service_id", Value: s.ServiceID},
 		UriParam{Key: "plan_id", Value: s.PlanID},
-	))
+	), 200)
 
-	Expect(resp.Code).To(Equal(200))
 	// Response will be an empty JSON object for future compatibility
 	var data map[string]interface{}
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func (s *ServiceHelper) Deprovision() {
+func (s *ServiceHelper) Deprovision(instanceID string) {
 	resp := DoRequest(s.BrokerAPI, NewRequest(
 		"DELETE",
-		"/v2/service_instances/"+s.InstanceID,
+		"/v2/service_instances/"+instanceID,
 		nil,
 		s.Cfg.Username,
 		s.Cfg.Password,
 		UriParam{Key: "service_id", Value: s.ServiceID},
 		UriParam{Key: "plan_id", Value: s.PlanID},
 		UriParam{Key: "accepts_incomplete", Value: "true"},
-	))
-	Expect(resp.Code).To(BeEquivalentTo(202))
+	), 202)
 
 	var deprovisionResp brokerapi.DeprovisionResponse
 	err := json.NewDecoder(resp.Body).Decode(&deprovisionResp)
 	Expect(err).ToNot(HaveOccurred())
 
 	operationState := PollForOperationCompletion(
-		s.Cfg, s.BrokerAPI, s.InstanceID,
+		s.Cfg, s.BrokerAPI, instanceID,
 		s.ServiceID, s.PlanID, deprovisionResp.OperationData,
 	)
 	Expect(operationState).To(Equal("succeeded"), "returns success")
 }
 
-func (s *ServiceHelper) Provision() {
+func (s *ServiceHelper) Provision(params map[string]interface{}) string {
+	instanceID := NewUUID()
+	request := map[string]interface{}{
+		"service_id":        s.ServiceID,
+		"plan_id":           s.PlanID,
+		"organization_guid": "test-organization-id",
+		"space_guid":        "space-id",
+		"parameters":        params,
+	}
+	requestJSON, err := json.Marshal(request)
+	Expect(err).ToNot(HaveOccurred())
+
 	resp := DoRequest(s.BrokerAPI, NewRequest(
 		"PUT",
-		"/v2/service_instances/"+s.InstanceID,
-		strings.NewReader(fmt.Sprintf(`{
-			"service_id": "%s",
-			"plan_id": "%s",
-			"organization_guid": "test-organization-id",
-			"space_guid": "space-id",
-			"parameters": "{}"
-		}`, s.ServiceID, s.PlanID)),
+		"/v2/service_instances/"+instanceID,
+		requestJSON,
 		s.Cfg.Username,
 		s.Cfg.Password,
 		UriParam{Key: "accepts_incomplete", Value: "true"},
-	))
-	Expect(resp.Code).To(Equal(202))
+	), 202)
 
 	var provisionResp brokerapi.ProvisioningResponse
-	err := json.NewDecoder(resp.Body).Decode(&provisionResp)
+	err = json.NewDecoder(resp.Body).Decode(&provisionResp)
 	Expect(err).NotTo(HaveOccurred())
 
 	operationState := PollForOperationCompletion(
 		s.Cfg, s.BrokerAPI,
-		s.InstanceID, s.ServiceID, s.PlanID, provisionResp.OperationData,
+		instanceID, s.ServiceID, s.PlanID, provisionResp.OperationData,
 	)
 	Expect(operationState).To(Equal("succeeded"), "and returns success")
 
 	// ensure deployment is in expected cluster
-	deploymentName := fmt.Sprintf("%s-%s", s.Cfg.DBPrefix, s.InstanceID)
+	deploymentName := fmt.Sprintf("%s-%s", s.Cfg.DBPrefix, instanceID)
 	deployment, errs := s.ComposeClient.GetDeploymentByName(deploymentName)
 	Expect(errs).To(BeNil())
 	clusterURL, err := url.Parse(deployment.Links.ClusterLink.HREF)
@@ -255,13 +264,14 @@ func (s *ServiceHelper) Provision() {
 	Expect(errs).To(BeNil())
 	Expect(clusterID).To(Equal(expectedCluster.ID))
 	Expect(expectedCluster.Type).To(Equal("private"))
+
+	return instanceID
 }
 
 func NewService(serviceID string, planID string, whitelistedIPs []string) (s *ServiceHelper) {
 	s = &ServiceHelper{
-		InstanceID: NewUUID(),
-		ServiceID:  serviceID,
-		PlanID:     planID,
+		ServiceID: serviceID,
+		PlanID:    planID,
 		Cfg: &config.Config{
 			Username:    randString(10),
 			Password:    randString(10),
@@ -338,4 +348,25 @@ func MongoConnection(uri, caBase64 string) (*mgo.Session, error) {
 			})
 		},
 	})
+}
+
+func CreateBackup(client compose.Client, deploymentName string) {
+	var deployment *composeapi.Deployment
+	Eventually(func() []error {
+		var errs []error
+		deployment, errs = client.GetDeploymentByName(deploymentName)
+		return errs
+	}, 1*time.Minute, 15*time.Second).Should(BeEmpty())
+
+	var recipe *composeapi.Recipe
+	Eventually(func() []error {
+		var errs []error
+		recipe, errs = client.StartBackupForDeployment(deployment.ID)
+		return errs
+	}, 1*time.Minute, 15*time.Second).Should(BeEmpty())
+
+	Eventually(func() bool {
+		recipe, err := client.GetRecipe(recipe.ID)
+		return err == nil && recipe.Status == "complete"
+	}, 20*time.Minute, 1*time.Minute).Should(BeTrue())
 }

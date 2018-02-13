@@ -9,10 +9,6 @@ import (
 	"net/http"
 )
 
-func makeDatabaseName(instanceID string) string {
-	return fmt.Sprintf("db_%s", instanceID)
-}
-
 func makeUserName(bindingID string) string {
 	return fmt.Sprintf("user_%s", bindingID)
 }

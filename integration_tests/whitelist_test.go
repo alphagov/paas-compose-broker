@@ -1,6 +1,9 @@
 package integration_test
 
 import (
+	"time"
+
+	composeapi "github.com/compose/gocomposeapi"
 	"github.com/garyburd/redigo/redis"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -17,10 +20,11 @@ var _ = Describe("whitelisting deployments", func() {
 	)
 
 	var (
-		service *helper.ServiceHelper
-		binding *helper.BindingData
-		conn    redis.Conn
-		appID   string
+		service    *helper.ServiceHelper
+		instanceID string
+		binding    *helper.BindingData
+		conn       redis.Conn
+		appID      string
 	)
 
 	BeforeEach(func() {
@@ -37,28 +41,35 @@ var _ = Describe("whitelisting deployments", func() {
 		})
 
 		By("provisioning a service", func() {
-			service.Provision()
+			instanceID = service.Provision(map[string]interface{}{})
 		})
 
 		defer By("deprovisioning the service", func() {
-			service.Deprovision()
+			service.Deprovision(instanceID)
 		})
 
 		By("binding a resource to the service", func() {
-			binding = service.Bind(appID)
+			binding = service.Bind(instanceID, appID)
 		})
 
 		defer By("unbinding the service", func() {
-			service.Unbind(binding.ID)
+			service.Unbind(instanceID, binding.ID)
 		})
 
 		By("ensuring that whitelist is set", func() {
-			deploymentName, err := broker.MakeInstanceName(service.Cfg.DBPrefix, service.InstanceID)
+			deploymentName, err := broker.MakeInstanceName(service.Cfg.DBPrefix, instanceID)
 			Expect(err).NotTo(HaveOccurred())
-			deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
-			Expect(errs).To(BeEmpty())
-			whitelist, errs := service.ComposeClient.GetWhitelistForDeployment(deployment.ID)
-			Expect(errs).To(BeEmpty())
+
+			var whitelist []composeapi.DeploymentWhitelist
+			Eventually(func() []error {
+				var errs []error
+				deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
+				if errs != nil {
+					return errs
+				}
+				whitelist, errs = service.ComposeClient.GetWhitelistForDeployment(deployment.ID)
+				return errs
+			}, 1*time.Minute, 15*time.Second).Should(BeEmpty())
 
 			Expect(len(whitelist)).To(Equal(1))
 			Expect(whitelist[0].IP).To(Equal("1.1.1.1/32"))

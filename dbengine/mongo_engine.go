@@ -15,8 +15,22 @@ import (
 )
 
 const (
-	passwordLength = 32
+	passwordLength      = 32
+	defaultDatabaseName = "default"
 )
+
+// MongoSession is an incomplete interface for mgo.Session
+//go:generate counterfeiter -o fakes/fake_mongo_session.go . MongoSession
+type MongoSession interface {
+	Run(cmd interface{}, result interface{}) error
+}
+
+type DatabaseNames struct {
+	Databases []struct {
+		Name  string
+		Empty bool
+	}
+}
 
 type MongoCredentials struct {
 	Hosts               []string `json:"hosts"`
@@ -64,33 +78,37 @@ func dialInfoToCredentials(dialInfo *mgo.DialInfo, caCertificateBase64 string) *
 func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interface{}, error) {
 	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get master dial info: %s", err.Error())
 	}
 
 	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to MongoDB: %s", err.Error())
 	}
 	defer session.Close()
 
-	dbname := makeDatabaseName(instanceID)
+	dbName, err := e.GetDatabaseName(session, defaultDatabaseName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list the MongoDB databases: %s", err.Error())
+	}
+
 	username := makeUserName(bindingID)
 	password, err := makeRandomPassword(passwordLength)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate password: %s", err.Error())
 	}
 
-	err = session.DB(dbname).UpsertUser(&mgo.User{
+	err = session.DB(dbName).UpsertUser(&mgo.User{
 		Username: username,
 		Password: password,
 		Roles:    []mgo.Role{mgo.RoleReadWrite},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create user in MongoDB: %s", err.Error())
 	}
 
 	bindDialInfo := masterDialInfo
-	bindDialInfo.Database = dbname
+	bindDialInfo.Database = dbName
 	bindDialInfo.Username = username
 	bindDialInfo.Password = password
 
@@ -100,14 +118,23 @@ func (e *MongoEngine) GenerateCredentials(instanceID, bindingID string) (interfa
 func (e *MongoEngine) RevokeCredentials(instanceID, bindingID string) error {
 	masterDialInfo, err := e.getMasterDialInfo()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get master dial info: %s", err.Error())
 	}
+
 	session, err := mgo.DialWithInfo(masterDialInfo)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to MongoDB: %s", err.Error())
 	}
 	defer session.Close()
-	return session.DB(makeDatabaseName(instanceID)).RemoveUser(makeUserName(bindingID))
+
+	dbName, err := e.GetDatabaseName(session, defaultDatabaseName)
+	if err != nil {
+		return fmt.Errorf("failed to list the MongoDB databases: %s", err.Error())
+	}
+
+	username := makeUserName(bindingID)
+
+	return session.DB(dbName).RemoveUser(username)
 }
 
 func (e *MongoEngine) getMasterDialInfo() (*mgo.DialInfo, error) {
@@ -163,4 +190,18 @@ func createDialServer(caCert string) (func(*mgo.ServerAddr) (net.Conn, error), e
 		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
 		return conn, err
 	}, nil
+}
+
+func (e *MongoEngine) GetDatabaseName(session MongoSession, defaultName string) (string, error) {
+	var result DatabaseNames
+	if err := session.Run("listDatabases", &result); err != nil {
+		return "", err
+	}
+	for _, db := range result.Databases {
+		if db.Name == defaultName || strings.HasPrefix(db.Name, "db_") {
+			return db.Name, nil
+		}
+	}
+
+	return defaultName, nil
 }

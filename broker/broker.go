@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	ComposeDatacenter   = "aws:eu-west-1"
-	instanceIDLogKey    = "instance-id"
-	bindingIDLogKey     = "binding-id"
-	detailsLogKey       = "details"
-	asyncAllowedLogKey  = "acceptsIncomplete"
-	operationDataLogKey = "operation-data-recipe-id"
+	ComposeDatacenter           = "aws:eu-west-1"
+	instanceIDLogKey            = "instance-id"
+	bindingIDLogKey             = "binding-id"
+	detailsLogKey               = "details"
+	asyncAllowedLogKey          = "acceptsIncomplete"
+	operationDataLogKey         = "operation-data-recipe-id"
+	restoreFromLatestSnapshotOf = "restoreFromLatestSnapshotOf"
 )
 
 type OperationData struct {
@@ -106,34 +107,49 @@ func (b *Broker) Provision(context context.Context, instanceID string, details b
 		return spec, brokerapi.ErrAsyncRequired
 	}
 
-	service, err := b.Catalog.GetService(details.ServiceID)
+	provisionParameters := &ProvisionParameters{}
+	if len(details.RawParameters) > 0 {
+		var err error
+		provisionParameters, err = ParseProvisionParameters(details.RawParameters)
+		if err != nil {
+			return brokerapi.ProvisionedServiceSpec{}, err
+		}
+	}
+
+	newInstanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
 	if err != nil {
 		return spec, err
 	}
 
-	plan, err := service.GetPlan(details.PlanID)
-	if err != nil {
-		return spec, err
+	var deployment *composeapi.Deployment
+	if provisionParameters.RestoreFromLatestSnapshotOf != nil {
+		b.Logger.Debug("provision.restore", lager.Data{
+			instanceIDLogKey:            instanceID,
+			detailsLogKey:               details,
+			restoreFromLatestSnapshotOf: provisionParameters.RestoreFromLatestSnapshotOf,
+		})
+
+		deployment, err = b.createDeploymentFromLatestSnapshot(
+			*provisionParameters.RestoreFromLatestSnapshotOf,
+			newInstanceName, details.ServiceID, details.PlanID, details.SpaceGUID,
+		)
+		if err != nil {
+			return spec, err
+		}
+	} else {
+		b.Logger.Debug("provision.blank", lager.Data{
+			instanceIDLogKey: instanceID,
+			detailsLogKey:    details,
+		})
+
+		deployment, err = b.createDeployment(newInstanceName, details.ServiceID, details.PlanID, details.SpaceGUID)
+		if err != nil {
+			return spec, err
+		}
 	}
 
-	instanceName, err := MakeInstanceName(b.Config.DBPrefix, instanceID)
-	if err != nil {
-		return spec, err
-	}
-
-	params := composeapi.DeploymentParams{
-		Name:         instanceName,
-		AccountID:    b.AccountID,
-		Datacenter:   ComposeDatacenter,
-		DatabaseType: plan.Compose.DatabaseType,
-		Units:        plan.Compose.Units,
-		SSL:          true,
-		ClusterID:    b.ClusterID,
-	}
-
-	deployment, errs := b.Compose.CreateDeployment(params)
-	if len(errs) > 0 {
-		return spec, compose.SquashErrors(errs)
+	if deployment == nil {
+		return spec, fmt.Errorf("unexpected nil deployment")
 	}
 
 	ok := false
@@ -388,4 +404,99 @@ func (b *Broker) LastOperation(context context.Context, instanceID, operationDat
 		State:       deploymentState,
 		Description: deploymentRecipe.StatusDetail,
 	}, nil
+}
+
+func (b *Broker) createDeployment(newInstanceName, serviceID, planID, spaceID string) (*composeapi.Deployment, error) {
+	service, err := b.Catalog.GetService(serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := service.GetPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+
+	params := composeapi.DeploymentParams{
+		Name:                newInstanceName,
+		AccountID:           b.AccountID,
+		Datacenter:          ComposeDatacenter,
+		DatabaseType:        plan.Compose.DatabaseType,
+		Units:               plan.Compose.Units,
+		SSL:                 true,
+		ClusterID:           b.ClusterID,
+		CustomerBillingCode: spaceID,
+	}
+
+	deployment, errs := b.Compose.CreateDeployment(params)
+	if len(errs) > 0 {
+		return nil, compose.SquashErrors(errs)
+	}
+	return deployment, nil
+}
+
+func (b *Broker) createDeploymentFromLatestSnapshot(restoreFrom, newInstanceName, serviceID, planID, spaceID string) (*composeapi.Deployment, error) {
+	oldInstanceName, err := MakeInstanceName(b.Config.DBPrefix, restoreFrom)
+	if err != nil {
+		return nil, err
+	}
+
+	service, err := b.Catalog.GetService(serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := service.GetPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+
+	oldDeployment, err := findDeployment(b.Compose, oldInstanceName)
+	if err != nil {
+		return nil, fmt.Errorf("service '%s' does not exist", restoreFrom)
+	}
+
+	if oldDeployment.CustomerBillingCode != spaceID {
+		return nil, errors.New("you are only allowed to restore from backup to the same space")
+	}
+
+	if oldDeployment.Type != plan.Compose.DatabaseType {
+		return nil, errors.New("you are only allowed to restore a backup from the same service type")
+	}
+
+	oldDeploymentBackups, errs := b.Compose.GetBackupsForDeployment(oldDeployment.ID)
+	if len(errs) > 0 {
+		return nil, compose.SquashErrors(errs)
+	}
+
+	chosenOldDeploymentBackup := newestRestorableBackup(*oldDeploymentBackups)
+	if chosenOldDeploymentBackup == nil {
+		return nil, errors.New("that instance has no restorable snapshots")
+	}
+
+	restoreBackupParams := composeapi.RestoreBackupParams{
+		DeploymentID: oldDeployment.ID,
+		BackupID:     chosenOldDeploymentBackup.ID,
+		Name:         newInstanceName,
+		Datacenter:   ComposeDatacenter,
+		SSL:          true,
+		ClusterID:    b.ClusterID,
+	}
+	deployment, errs := b.Compose.RestoreBackup(restoreBackupParams)
+	if len(errs) > 0 {
+		return nil, compose.SquashErrors(errs)
+	}
+	provisionRecipeID := deployment.ProvisionRecipeID
+
+	patchDeploymentParams := composeapi.PatchDeploymentParams{
+		DeploymentID:        deployment.ID,
+		CustomerBillingCode: spaceID,
+	}
+	deployment, errs = b.Compose.PatchDeployment(patchDeploymentParams)
+	if len(errs) > 0 {
+		return nil, compose.SquashErrors(errs)
+	}
+	deployment.ProvisionRecipeID = provisionRecipeID
+
+	return deployment, nil
 }
