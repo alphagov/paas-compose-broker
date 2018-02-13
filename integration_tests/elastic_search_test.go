@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -123,14 +122,7 @@ var _ = Describe("Broker Compose Integration", func() {
 
 			By("ensuring we have a backup", func() {
 				deploymentName := fmt.Sprintf("%s-%s", service.Cfg.DBPrefix, instanceID)
-				deployment, errs := service.ComposeClient.GetDeploymentByName(deploymentName)
-				Expect(errs).To(BeNil())
-				recipe, errs := service.ComposeClient.StartBackupForDeployment(deployment.ID)
-				Expect(errs).To(BeNil())
-				Eventually(func() bool {
-					recipe, err := service.ComposeClient.GetRecipe(recipe.ID)
-					return err == nil && recipe.Status == "complete"
-				}, 15*time.Minute, 30*time.Second).Should(BeTrue())
+				helper.CreateBackup(service.ComposeClient, deploymentName)
 			})
 
 			By("creating a new service instance from backup", func() {

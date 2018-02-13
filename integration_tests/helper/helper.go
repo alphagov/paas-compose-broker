@@ -20,6 +20,7 @@ import (
 	mgo "gopkg.in/mgo.v2"
 
 	"code.cloudfoundry.org/lager"
+	composeapi "github.com/compose/gocomposeapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-cf/brokerapi"
@@ -347,4 +348,25 @@ func MongoConnection(uri, caBase64 string) (*mgo.Session, error) {
 			})
 		},
 	})
+}
+
+func CreateBackup(client compose.Client, deploymentName string) {
+	var deployment *composeapi.Deployment
+	Eventually(func() []error {
+		var errs []error
+		deployment, errs = client.GetDeploymentByName(deploymentName)
+		return errs
+	}, 1*time.Minute, 15*time.Second).Should(BeEmpty())
+
+	var recipe *composeapi.Recipe
+	Eventually(func() []error {
+		var errs []error
+		recipe, errs = client.StartBackupForDeployment(deployment.ID)
+		return errs
+	}, 1*time.Minute, 15*time.Second).Should(BeEmpty())
+
+	Eventually(func() bool {
+		recipe, err := client.GetRecipe(recipe.ID)
+		return err == nil && recipe.Status == "complete"
+	}, 20*time.Minute, 1*time.Minute).Should(BeTrue())
 }
