@@ -17,8 +17,6 @@ func (p *ProviderService) GetDBEngine(deployment *composeapi.Deployment) (DBEngi
 	switch strings.ToLower(deployment.Type) {
 	case "mongodb":
 		return NewMongoEngine(deployment), nil
-	case "redis":
-		return NewRedisEngine(deployment), nil
 	case "elastic_search":
 		return NewElasticSearchEngine(deployment), nil
 	default:
