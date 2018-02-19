@@ -4,27 +4,28 @@ import (
 	"time"
 
 	composeapi "github.com/compose/gocomposeapi"
-	"github.com/garyburd/redigo/redis"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	"github.com/alphagov/paas-compose-broker/broker"
+	"github.com/alphagov/paas-compose-broker/client/elastic"
+	"github.com/alphagov/paas-compose-broker/dbengine"
 	"github.com/alphagov/paas-compose-broker/integration_tests/helper"
 )
 
 var _ = Describe("whitelisting deployments", func() {
 
 	const (
-		redisServiceID = "1356eeeb-7c5d-4d9d-9a04-c035a2c709b3"
-		redisPlanID    = "a8574a4b-9c6c-40ea-a0df-e9b7507948c8"
+		elasticSearchServiceID = "6e9202f2-c2e1-4de8-8d4a-a8c898fc2d8c"
+		elasticSearchPlanID    = "6d051078-0913-403c-9763-1d03ecee50d9"
 	)
 
 	var (
 		service    *helper.ServiceHelper
 		instanceID string
 		binding    *helper.BindingData
-		conn       redis.Conn
 		appID      string
+		client     *elastic.Client
 	)
 
 	BeforeEach(func() {
@@ -37,7 +38,7 @@ var _ = Describe("whitelisting deployments", func() {
 
 	It("should support whitelisting IPs", func() {
 		By("initializing service from catalog", func() {
-			service = helper.NewService(redisServiceID, redisPlanID, []string{"1.1.1.1"})
+			service = helper.NewService(elasticSearchServiceID, elasticSearchPlanID, []string{"1.1.1.1"})
 		})
 
 		By("provisioning a service", func() {
@@ -76,16 +77,14 @@ var _ = Describe("whitelisting deployments", func() {
 		})
 
 		By("ensuring that access is denied", func() {
-			var err error
-			conn, err = redis.DialURL(binding.Credentials.URI)
-			Expect(err).To(HaveOccurred())
-		})
+			httpClient, err := dbengine.SetupHTTPClient(binding.Credentials.CACertificateBase64)
+			Expect(err).NotTo(HaveOccurred())
 
-		defer By("disconnecting from the service", func() {
-			if conn != nil {
-				err := conn.Close()
-				Expect(err).ToNot(HaveOccurred())
-			}
+			client, err = elastic.New(binding.Credentials.URI, httpClient)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = client.Version()
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })
